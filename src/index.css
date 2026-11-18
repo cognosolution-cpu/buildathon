@@ -1,0 +1,141 @@
+@import "tailwindcss";
+
+:root {
+  --bg-base: #050505;
+  --bg-surface: #111111;
+  --bg-elevated: #181717;
+  --bg-glass: rgba(255, 255, 255, 0.06);
+  --bg-glass-hover: rgba(255, 255, 255, 0.10);
+  --primary: #ff6a00;
+  --primary-glow: #ffa040;
+  --primary-deep: #e34a00;
+  --primary-fade: rgba(255, 106, 0, 0.16);
+  --text-primary: #f5f5f5;
+  --text-secondary: #9a9a9a;
+  --accent-success: #2ee59d;
+  --accent-info: #4da3ff;
+  --accent-gold: #ffc83d;
+  --accent-danger: #ff4d5e;
+  --border-hairline: rgba(255, 255, 255, 0.10);
+  --border-sheen: rgba(255, 255, 255, 0.15);
+
+  --font-display: "Sora", "Noto Sans Devanagari", "Noto Sans Kannada", system-ui, sans-serif;
+  --font-body: "Plus Jakarta Sans", "Noto Sans Devanagari", "Noto Sans Kannada", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+}
+
+@layer base {
+  html,
+  body {
+    background-color: var(--bg-base);
+    color: var(--text-primary);
+    font-family: var(--font-body);
+    overflow-x: hidden;
+  }
+
+  h1,
+  h2,
+  h3,
+  .font-display {
+    font-family: var(--font-display);
+  }
+}
+
+.font-mono-num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Atmospheric Radial Illumination canvas backdrop */
+.vc-canvas-bg {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 12% 8%, rgba(255, 106, 0, 0.16) 0%, rgba(255, 106, 0, 0) 44%),
+    radial-gradient(circle at 88% 88%, rgba(255, 160, 64, 0.12) 0%, rgba(255, 160, 64, 0) 42%),
+    linear-gradient(180deg, #0b0908 0%, #050505 38%, #050505 100%);
+}
+
+/* Frosted Glass Surface */
+.vc-glass {
+  background: rgba(255, 255, 255, 0.055);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.12);
+}
+
+.vc-glass-blur {
+  background: rgba(17, 17, 17, 0.84);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+}
+
+/* Voice Orb radial sphere and breathing states */
+.vc-orb {
+  background: radial-gradient(circle at 32% 28%, #ffb969 0%, #ff6a00 55%, #c93b00 100%);
+  box-shadow:
+    0 8px 32px rgba(255, 106, 0, 0.36),
+    inset 0 2px 4px rgba(255, 255, 255, 0.35);
+  transition: transform 200ms cubic-bezier(0.16, 1, 0.3, 1), box-shadow 200ms ease;
+}
+
+.vc-orb:hover {
+  transform: scale(1.05);
+  box-shadow:
+    0 10px 40px rgba(255, 106, 0, 0.48),
+    inset 0 2px 6px rgba(255, 255, 255, 0.45);
+}
+
+.vc-orb[data-state="listening"] {
+  animation: orb-breathe 1.3s ease-in-out infinite;
+  box-shadow:
+    0 0 0 8px rgba(255, 106, 0, 0.22),
+    0 0 0 18px rgba(255, 160, 64, 0.10),
+    0 12px 44px rgba(255, 106, 0, 0.55);
+}
+
+.vc-orb[data-state="thinking"] {
+  background: radial-gradient(circle at 35% 30%, #ffd27d 0%, #ff8a1f 55%, #b84200 100%);
+  animation: orb-think 0.9s linear infinite;
+}
+
+.vc-orb[data-state="speaking"] {
+  box-shadow:
+    0 0 0 6px rgba(46, 229, 157, 0.25),
+    0 10px 36px rgba(255, 106, 0, 0.42);
+}
+
+@keyframes orb-breathe {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.08);
+  }
+}
+
+@keyframes orb-think {
+  0%, 100% {
+    transform: scale(0.97);
+  }
+  50% {
+    transform: scale(1.04);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vc-orb[data-state="listening"],
+  .vc-orb[data-state="thinking"] {
+    animation: none;
+  }
+}
+
+.pb-safe {
+  padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
+}

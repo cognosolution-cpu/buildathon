@@ -1,0 +1,6 @@
+{
+  "name": "VibeCart",
+  "description": "Voice-driven dark-mode commerce storefront with 3D product inspection, multilingual speech intents, 3D cart visualization, and live order tracking.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
