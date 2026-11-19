@@ -266,8 +266,10 @@ Help shoppers discover products, compare two items, add numbered items to cart, 
             llm: {
               url: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',
               api_key: geminiKey,
+              style: 'openai',
               params: {
-                model: 'gemini-2.5-flash',
+                model: 'gemini-3.1-flash-lite',
+                max_tokens: 140,
               },
               system_messages: [{ role: 'system', content: systemPrompt }],
               greeting_message: greetingByLang[lang] ?? greetingByLang['en-IN'],

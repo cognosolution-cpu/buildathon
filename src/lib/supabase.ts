@@ -69,11 +69,16 @@ export function mapProductRow(row: Record<string, unknown>): Product {
   };
 }
 
-export async function ensureSupabaseSession(): Promise<string | null> {
+export async function ensureSupabaseSession(options?: {
+  allowAnonymous?: boolean;
+}): Promise<string | null> {
   if (!supabase) return null;
   const { data } = await supabase.auth.getSession();
   if (data.session?.user?.id) {
     return data.session.user.id;
+  }
+  if (!options?.allowAnonymous) {
+    return null;
   }
   try {
     if (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('vc_anon_disabled') === '1') {

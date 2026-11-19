@@ -43,11 +43,17 @@ export class AgoraVoiceSession {
   private channelName: string | null = null;
   private muted = false;
   private active = false;
+  private starting = false;
+  private aborted = false;
   private chunkMap = new Map<string, ChunkAccumulator>();
   private processedTurnKeys = new Set<string>();
 
   isActive(): boolean {
     return this.active;
+  }
+
+  isConnecting(): boolean {
+    return this.starting;
   }
 
   isMuted(): boolean {
@@ -72,10 +78,15 @@ export class AgoraVoiceSession {
     },
     callbacks: AgoraSessionCallbacks
   ): Promise<boolean> {
+    if (this.starting) {
+      return false;
+    }
     if (this.active) {
       await this.stop();
     }
 
+    this.starting = true;
+    this.aborted = false;
     callbacks.onConnecting?.();
 
     try {
@@ -94,6 +105,10 @@ export class AgoraVoiceSession {
       };
       if (!tokenRes.ok || !tokenData.appId || !tokenData.channelName || !tokenData.token) {
         throw new Error(tokenData.error ?? 'Failed to fetch Agora RTC token.');
+      }
+      if (this.aborted) {
+        await this.cleanupLocal();
+        return false;
       }
 
       this.channelName = tokenData.channelName;
@@ -130,6 +145,10 @@ export class AgoraVoiceSession {
         tokenData.token,
         tokenData.uid ?? null
       );
+      if (this.aborted) {
+        await this.cleanupLocal();
+        return false;
+      }
 
       const micTrack = await AgoraRTC.createMicrophoneAudioTrack({
         AEC: true,
@@ -138,6 +157,10 @@ export class AgoraVoiceSession {
       });
       this.micTrack = micTrack;
       this.muted = false;
+      if (this.aborted) {
+        await this.cleanupLocal();
+        return false;
+      }
       await client.publish([micTrack]);
 
       // 3. Invite Agora Conversational AI Agent + Murf Falcon 2 TTS into the channel
@@ -161,6 +184,12 @@ export class AgoraVoiceSession {
         throw new Error(startData.error ?? 'Failed to start Agora Conversational AI agent.');
       }
 
+      if (this.aborted) {
+        this.agentId = startData.agentId;
+        await this.stop(callbacks);
+        return false;
+      }
+
       this.agentId = startData.agentId;
       this.active = true;
       callbacks.onConnected?.({
@@ -173,8 +202,12 @@ export class AgoraVoiceSession {
       const message =
         err instanceof Error ? err.message : 'Unable to start Agora voice session.';
       await this.cleanupLocal();
-      callbacks.onError?.(message);
+      if (!this.aborted) {
+        callbacks.onError?.(message);
+      }
       return false;
+    } finally {
+      this.starting = false;
     }
   }
 
@@ -269,6 +302,12 @@ export class AgoraVoiceSession {
   }
 
   async stop(callbacks?: AgoraSessionCallbacks): Promise<void> {
+    this.aborted = true;
+    if (this.starting) {
+      callbacks?.onDisconnected?.();
+      return;
+    }
+
     const agentId = this.agentId;
     const channelName = this.channelName;
     this.agentId = null;

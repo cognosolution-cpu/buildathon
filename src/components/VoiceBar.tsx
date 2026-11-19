@@ -67,7 +67,10 @@ export const VoiceAssistantShell: React.FC = () => {
   const handleMicToggle = async () => {
     setVoiceOverlayOpen(true);
     if (isAgoraConfigured) {
-      if (agoraActive || voiceStatus === 'connecting') {
+      if (voiceStatus === 'connecting') {
+        return;
+      }
+      if (agoraActive) {
         await stopAgoraVoice();
       } else {
         await startAgoraVoice();
