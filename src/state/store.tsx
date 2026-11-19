@@ -18,9 +18,12 @@ import type {
   ActionChip,
   Address,
   CartItem,
+  CheckoutDraft,
   LangCode,
   Order,
   OrderStatus,
+  ParsedIntent,
+  PaymentMethod,
   Product,
   ProductRef,
   RouteName,
@@ -141,6 +144,14 @@ interface VibeCartContextValue {
   submitReturn: (orderId: string, itemTitle: string, reason: string) => void;
   addresses: Address[];
   saveAddress: (address: Address) => void;
+  checkoutDraft: CheckoutDraft;
+  setCheckoutDraft: React.Dispatch<React.SetStateAction<CheckoutDraft>>;
+  payMethod: PaymentMethod;
+  setPayMethod: React.Dispatch<React.SetStateAction<PaymentMethod>>;
+  upiId: string;
+  setUpiId: React.Dispatch<React.SetStateAction<string>>;
+  checkoutSubmitNonce: number;
+  triggerCheckoutSubmit: () => void;
   voiceStatus: VoiceStatus;
   setVoiceStatus: React.Dispatch<React.SetStateAction<VoiceStatus>>;
   transcript: string;
@@ -191,6 +202,17 @@ export const VibeCartProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [cart, setCart] = useState<CartItem[]>(initialPersisted.cart);
   const [orders, setOrders] = useState<Order[]>(initialPersisted.orders);
   const [addresses, setAddresses] = useState<Address[]>(initialPersisted.addresses);
+  const [checkoutDraft, setCheckoutDraft] = useState<CheckoutDraft>({
+    name: initialPersisted.addresses[0]?.name ?? '',
+    phone: initialPersisted.addresses[0]?.phone ?? '',
+    line1: initialPersisted.addresses[0]?.line1 ?? '',
+    city: initialPersisted.addresses[0]?.city ?? '',
+    state: initialPersisted.addresses[0]?.state ?? '',
+    pincode: initialPersisted.addresses[0]?.pincode ?? '',
+  });
+  const [payMethod, setPayMethod] = useState<PaymentMethod>('card');
+  const [upiId, setUpiId] = useState<string>('success@razorpay');
+  const [checkoutSubmitNonce, setCheckoutSubmitNonce] = useState<number>(0);
   const [simpleView, setSimpleView] = useState<boolean>(initialPersisted.simpleView);
   const [compareIds, setCompareIds] = useState<string[]>(initialPersisted.compareIds);
 
@@ -214,7 +236,16 @@ export const VibeCartProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const productsRef = useRef<Product[]>(products);
   productsRef.current = products;
+  const cartRef = useRef<CartItem[]>(cart);
+  cartRef.current = cart;
+  const checkoutDraftRef = useRef<CheckoutDraft>(checkoutDraft);
+  checkoutDraftRef.current = checkoutDraft;
   const agoraSessionRef = useRef<AgoraVoiceSession | null>(null);
+  const lastUserVoiceAtRef = useRef<number>(0);
+
+  const triggerCheckoutSubmit = useCallback(() => {
+    setCheckoutSubmitNonce((n) => n + 1);
+  }, []);
 
   // Persist core user data locally
   useEffect(() => {
@@ -498,7 +529,7 @@ export const VibeCartProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       const chosenVariant = variantName ?? product.variants[0]?.name ?? 'Standard';
       let nextQty = quantity;
 
-      setCart((prev) => {
+      const computeNext = (prev: CartItem[]): CartItem[] => {
         const existingIdx = prev.findIndex(
           (i) => i.productId === productId && i.variantName === chosenVariant
         );
@@ -513,7 +544,11 @@ export const VibeCartProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         }
         nextQty = Math.min(10, quantity);
         return [...prev, { productId, quantity: nextQty, variantName: chosenVariant }];
-      });
+      };
+
+      const updatedSync = computeNext(cartRef.current);
+      cartRef.current = updatedSync;
+      setCart(updatedSync);
 
       syncCartItemToSupabase(productId, chosenVariant, nextQty);
       setLastAddedPulse((n) => n + 1);
@@ -529,12 +564,15 @@ export const VibeCartProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             if (idx < 0) return prev;
             if (prev[idx].quantity <= quantity) {
               syncCartItemToSupabase(productId, chosenVariant, 0);
-              return prev.filter((_, i) => i !== idx);
+              const filtered = prev.filter((_, i) => i !== idx);
+              cartRef.current = filtered;
+              return filtered;
             }
             const reduced = prev[idx].quantity - quantity;
             syncCartItemToSupabase(productId, chosenVariant, reduced);
             const next = [...prev];
             next[idx] = { ...next[idx], quantity: reduced };
+            cartRef.current = next;
             return next;
           });
         },
@@ -546,26 +584,29 @@ export const VibeCartProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const updateQuantity = useCallback(
     (productId: string, variantName: string, quantity: number) => {
       if (quantity <= 0) {
-        setCart((prev) =>
-          prev.filter((i) => !(i.productId === productId && i.variantName === variantName))
+        const filtered = cartRef.current.filter(
+          (i) => !(i.productId === productId && i.variantName === variantName)
         );
+        cartRef.current = filtered;
+        setCart(filtered);
         syncCartItemToSupabase(productId, variantName, 0);
         return;
       }
       const clamped = Math.min(10, quantity);
-      setCart((prev) =>
-        prev.map((i) =>
-          i.productId === productId && i.variantName === variantName
-            ? { ...i, quantity: clamped }
-            : i
-        )
+      const next = cartRef.current.map((i) =>
+        i.productId === productId && i.variantName === variantName
+          ? { ...i, quantity: clamped }
+          : i
       );
+      cartRef.current = next;
+      setCart(next);
       syncCartItemToSupabase(productId, variantName, clamped);
     },
     [syncCartItemToSupabase]
   );
 
   const clearCart = useCallback(() => {
+    cartRef.current = [];
     setCart([]);
     if (isSupabaseConfigured && supabase && authUserId) {
       getOrCreateActiveCartId(authUserId).then((cartId) => {
@@ -872,60 +913,83 @@ export const VibeCartProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       if (ref.id) return all.find((p) => p.id === ref.id) ?? null;
       if (ref.this) return all.find((p) => p.id === focusedProductId) ?? lastResults[0] ?? null;
       if (ref.name) {
-        const lower = ref.name.toLowerCase();
-        return (
+        const lower = ref.name
+          .toLowerCase()
+          .replace(/[.,!?।]+/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim();
+        if (!lower) return null;
+        const direct =
           lastResults.find((p) => p.title.toLowerCase().includes(lower)) ??
           all.find(
             (p) =>
               p.title.toLowerCase().includes(lower) ||
-              p.tags.some((tag) => lower.includes(tag))
-          ) ??
-          null
-        );
+              p.tags.some((tag) => lower.includes(tag.toLowerCase()))
+          );
+        if (direct) return direct;
+
+        // Token-based fuzzy match (handles "pulse buds air", "chronopulse", etc.)
+        const tokens = lower.split(' ').filter((tok) => tok.length >= 2);
+        if (tokens.length > 0) {
+          let bestProduct: Product | null = null;
+          let bestScore = 0;
+          for (const candidate of [...lastResults, ...all]) {
+            const hay = `${candidate.title} ${candidate.brand} ${candidate.tags.join(' ')}`.toLowerCase();
+            const score = tokens.reduce((acc, tok) => acc + (hay.includes(tok) ? 1 : 0), 0);
+            if (score > bestScore) {
+              bestScore = score;
+              bestProduct = candidate;
+            }
+          }
+          if (bestProduct && bestScore >= 1) return bestProduct;
+        }
       }
       return null;
     },
     [focusedProductId, lastResults]
   );
 
-  const runVoiceCommand = useCallback(
-    async (text: string, options: { speak?: boolean } = { speak: true }) => {
-      const trimmed = text.trim();
-      if (!trimmed) return;
-
-      setTranscript(trimmed);
-      setVoiceStatus('thinking');
-
-      const { parsed, replyHint } = await understand(trimmed, {
-        screen: route,
-        lang,
-        cartCount,
-        visibleProducts: lastResults.slice(0, 6).map((p, idx) => ({
-          index: idx + 1,
-          id: p.id,
-          title: p.title,
-          price: p.price,
-        })),
-      });
-
-      let reply = '';
+  const executeParsedAction = useCallback(
+    (action: ParsedIntent, replyHint?: string): string => {
       const all = productsRef.current;
+      const liveCart = cartRef.current;
+      const liveCartCount = liveCart.reduce((s, i) => s + i.quantity, 0);
+      const liveSubtotal = liveCart.reduce((s, i) => {
+        const prod = all.find((p) => p.id === i.productId);
+        return s + (prod ? prod.price * i.quantity : 0);
+      }, 0);
+      const liveShipping = liveSubtotal === 0 || liveSubtotal > 999 ? 0 : 49;
+      const liveCartTotal = liveSubtotal + liveShipping;
 
-      switch (parsed.intent) {
+      switch (action.intent) {
         case 'CHANGE_LANGUAGE': {
-          const nextLang = parsed.entities.lang ?? 'en-IN';
+          const nextLang = action.entities.lang ?? 'en-IN';
           setLang(nextLang);
           const langLabel = LANGUAGES.find((l) => l.code === nextLang)?.nativeLabel ?? nextLang;
-          reply = t(nextLang, 'languageChangedReply', { lang: langLabel });
+          const reply = t(nextLang, 'languageChangedReply', { lang: langLabel });
           pushChip({ type: 'info', text: reply });
-          break;
+          return reply;
+        }
+
+        case 'NAVIGATE': {
+          const dest = action.entities.targetRoute ?? 'home';
+          navigate(dest);
+          return `Opened ${dest === 'results' ? 'Explore' : dest} page.`;
+        }
+
+        case 'SIGN_IN_GOOGLE': {
+          navigate('profile');
+          signInWithGoogle().then((res) => {
+            if (!res.ok) pushChip({ type: 'error', text: res.message });
+          });
+          return 'Opening Google Sign-In.';
         }
 
         case 'SEARCH_PRODUCTS':
         case 'RECOMMEND': {
-          const query = parsed.entities.query ?? (parsed.intent === 'RECOMMEND' ? 'gift' : '');
-          const category = parsed.entities.category ?? 'all';
-          const maxPrice = parsed.entities.maxPrice ?? null;
+          const query = action.entities.query ?? (action.intent === 'RECOMMEND' ? 'gift' : '');
+          const category = action.entities.category ?? 'all';
+          const maxPrice = action.entities.maxPrice ?? null;
           setSearchCriteria({ query, category, maxPrice });
           const matched = searchCatalog(
             {
@@ -935,6 +999,7 @@ export const VibeCartProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             },
             all
           );
+          let reply: string;
           if (matched.length > 0) {
             setLastResults(matched);
             reply = replyHint ?? t(lang, 'foundReply', { count: matched.length });
@@ -948,48 +1013,47 @@ export const VibeCartProvider: React.FC<{ children: React.ReactNode }> = ({ chil
               if (remote && remote.length > 0) setLastResults(remote);
             });
           }
-          break;
+          return reply;
         }
 
         case 'ASK_PRODUCT': {
-          const target = resolveRef(parsed.entities.productRef) ?? lastResults[0] ?? all[0];
+          const target = resolveRef(action.entities.productRef) ?? lastResults[0] ?? all[0];
           navigate('product', target.id);
-          const q = (parsed.entities.question ?? '').toLowerCase();
+          const q = (action.entities.question ?? '').toLowerCase();
           if (q.includes('water')) {
-            reply = `${target.title} features ${target.specs['Water Resistance'] ?? 'splash protection'}.`;
-          } else if (q.includes('battery')) {
-            reply = `${target.title} delivers ${target.specs.Battery ?? 'all-day battery life'}.`;
-          } else if (q.includes('warranty')) {
-            reply = `${target.title} includes a ${target.specs.Warranty ?? '1 Year'} manufacturer warranty.`;
-          } else {
-            reply =
-              replyHint ??
-              `${target.title} by ${target.brand} is ₹${target.price.toLocaleString('en-IN')} with a ${target.rating} star rating.`;
+            return `${target.title} features ${target.specs['Water Resistance'] ?? 'splash protection'}.`;
           }
-          break;
+          if (q.includes('battery')) {
+            return `${target.title} delivers ${target.specs.Battery ?? 'all-day battery life'}.`;
+          }
+          if (q.includes('warranty')) {
+            return `${target.title} includes a ${target.specs.Warranty ?? '1 Year'} manufacturer warranty.`;
+          }
+          return (
+            replyHint ??
+            `${target.title} by ${target.brand} is ₹${target.price.toLocaleString('en-IN')} with a ${target.rating} star rating.`
+          );
         }
 
         case 'ADD_TO_CART': {
-          const target = resolveRef(parsed.entities.productRef);
+          const target = resolveRef(action.entities.productRef);
           if (!target) {
-            reply = 'Which product would you like? Say a number from 1 to ' + lastResults.length + '.';
-            pushChip({ type: 'error', text: 'Specify product number (1–' + lastResults.length + ')' });
-          } else {
-            const colorHint = parsed.entities.variant?.toLowerCase();
-            const matchedVariant = colorHint
-              ? target.variants.find((v) => v.name.toLowerCase().includes(colorHint))?.name
-              : target.variants[0]?.name;
-            addToCart(target.id, parsed.entities.quantity ?? 1, matchedVariant);
-            reply = replyHint ?? t(lang, 'addedReply', { title: target.title });
+            pushChip({ type: 'error', text: 'Specify product name or number (1–' + lastResults.length + ')' });
+            return 'Which product would you like? Say its name or a number from 1 to ' + lastResults.length + '.';
           }
-          break;
+          const colorHint = action.entities.variant?.toLowerCase();
+          const matchedVariant = colorHint
+            ? target.variants.find((v) => v.name.toLowerCase().includes(colorHint))?.name
+            : target.variants[0]?.name;
+          addToCart(target.id, action.entities.quantity ?? 1, matchedVariant);
+          return replyHint ?? t(lang, 'addedReply', { title: target.title });
         }
 
         case 'REMOVE_FROM_CART': {
-          const inCartProducts = cart
+          const inCartProducts = liveCart
             .map((c) => all.find((p) => p.id === c.productId))
             .filter((p): p is Product => Boolean(p));
-          const ref = parsed.entities.productRef;
+          const ref = action.entities.productRef;
           let target: Product | undefined;
           if (ref?.index) target = inCartProducts[ref.index - 1];
           else if (ref?.name) {
@@ -1004,29 +1068,32 @@ export const VibeCartProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           }
           if (target) {
             removeFromCart(target.id);
-            reply = t(lang, 'removedReply', { title: target.title });
-          } else {
-            reply = 'I could not find that item in your cart.';
+            return t(lang, 'removedReply', { title: target.title });
           }
-          break;
+          return 'I could not find that item in your cart.';
         }
 
         case 'UPDATE_QUANTITY': {
-          const firstItem = cart[0];
+          const firstItem = liveCart[0];
           if (firstItem) {
-            const qty = parsed.entities.quantity ?? 1;
+            const qty = action.entities.quantity ?? 1;
             updateQuantity(firstItem.productId, firstItem.variantName, qty);
             const prod = all.find((p) => p.id === firstItem.productId);
-            reply = `Updated ${prod?.title ?? 'item'} quantity to ${qty}.`;
+            const reply = `Updated ${prod?.title ?? 'item'} quantity to ${qty}.`;
             pushChip({ type: 'info', text: reply });
-          } else {
-            reply = t(lang, 'emptyCart');
+            return reply;
           }
-          break;
+          return t(lang, 'emptyCart');
+        }
+
+        case 'CLEAR_CART': {
+          clearCart();
+          pushChip({ type: 'info', text: 'Cart cleared' });
+          return 'Cleared all items from your cart.';
         }
 
         case 'COMPARE': {
-          const refs = parsed.entities.productRefs ?? [];
+          const refs = action.entities.productRefs ?? [];
           const resolved = refs
             .map((r) => resolveRef(r))
             .filter((p): p is Product => Boolean(p));
@@ -1038,108 +1105,137 @@ export const VibeCartProvider: React.FC<{ children: React.ReactNode }> = ({ chil
                 : all.slice(0, 2);
           setCompareIds(finalPair.map((p) => p.id));
           const comparison = buildComparison(finalPair);
-          reply = comparison?.verdict ?? 'Opening comparison view.';
           navigate('compare');
-          break;
+          return comparison?.verdict ?? 'Opening comparison view.';
         }
 
         case 'SHOW_CART': {
           navigate('cart');
-          reply =
-            cartCount > 0
-              ? t(lang, 'cartSummaryReply', {
-                  count: cartCount,
-                  total: cartTotal.toLocaleString('en-IN'),
-                })
-              : t(lang, 'emptyCart');
-          break;
+          return liveCartCount > 0
+            ? t(lang, 'cartSummaryReply', {
+                count: liveCartCount,
+                total: liveCartTotal.toLocaleString('en-IN'),
+              })
+            : t(lang, 'emptyCart');
         }
 
         case 'CHECKOUT': {
-          if (cartCount === 0) {
-            reply = t(lang, 'emptyCart');
+          if (liveCartCount === 0) {
+            const reply = t(lang, 'emptyCart');
             pushChip({ type: 'error', text: reply });
-          } else {
-            setPendingConfirmation({ type: 'CHECKOUT' });
-            navigate('checkout');
-            reply = t(lang, 'checkoutPromptReply', {
-              total: cartTotal.toLocaleString('en-IN'),
-            });
+            return reply;
           }
-          break;
+          setPendingConfirmation({ type: 'CHECKOUT' });
+          navigate('checkout');
+          return t(lang, 'checkoutPromptReply', {
+            total: liveCartTotal.toLocaleString('en-IN'),
+          });
+        }
+
+        case 'FILL_CHECKOUT': {
+          if (liveCartCount > 0 && route !== 'checkout') {
+            navigate('checkout');
+          }
+          let mergedDraft = { ...checkoutDraftRef.current };
+          if (action.entities.useSavedAddress && addresses[0]) {
+            mergedDraft = {
+              name: addresses[0].name,
+              phone: addresses[0].phone,
+              line1: addresses[0].line1,
+              city: addresses[0].city,
+              state: addresses[0].state,
+              pincode: addresses[0].pincode,
+            };
+          }
+          if (action.entities.checkoutFields) {
+            mergedDraft = { ...mergedDraft, ...action.entities.checkoutFields };
+          }
+          checkoutDraftRef.current = mergedDraft;
+          setCheckoutDraft(mergedDraft);
+
+          if (action.entities.payMethod) {
+            setPayMethod(action.entities.payMethod);
+          }
+          if (action.entities.upiId) {
+            setPayMethod('upi');
+            setUpiId(action.entities.upiId);
+          }
+          if (action.entities.submitPayment) {
+            if (liveCartCount === 0) {
+              return t(lang, 'emptyCart');
+            }
+            navigate('checkout');
+            triggerCheckoutSubmit();
+            return 'Submitting checkout details and opening payment.';
+          }
+
+          const updatedParts: string[] = [];
+          if (action.entities.checkoutFields?.name) updatedParts.push('name');
+          if (action.entities.checkoutFields?.phone) updatedParts.push('phone');
+          if (action.entities.checkoutFields?.line1) updatedParts.push('address');
+          if (action.entities.checkoutFields?.city) updatedParts.push('city');
+          if (action.entities.checkoutFields?.state) updatedParts.push('state');
+          if (action.entities.checkoutFields?.pincode) updatedParts.push('PIN code');
+          if (action.entities.payMethod) updatedParts.push(`${action.entities.payMethod.toUpperCase()} payment`);
+          if (action.entities.useSavedAddress) updatedParts.push('saved address');
+
+          const summary = updatedParts.length > 0 ? updatedParts.join(', ') : 'checkout details';
+          pushChip({ type: 'success', text: `Updated ${summary}` });
+          return `Updated ${summary} on checkout.`;
         }
 
         case 'CONFIRM': {
-          if (pendingConfirmation?.type === 'CHECKOUT') {
+          if (pendingConfirmation?.type === 'CHECKOUT' || route === 'checkout') {
             setPendingConfirmation(null);
             navigate('checkout');
-            reply = 'Checkout confirmed. Click Pay Now to complete your payment.';
-          } else {
-            reply = 'Confirmed.';
+            triggerCheckoutSubmit();
+            return 'Proceeding with checkout payment.';
           }
-          break;
+          return 'Confirmed.';
         }
 
         case 'DENY': {
           if (pendingConfirmation) {
             setPendingConfirmation(null);
-            reply = 'Cancelled that action. How else can I help?';
-          } else {
-            reply = 'Okay, cancelled.';
+            return 'Cancelled that action. How else can I help?';
           }
-          break;
+          return 'Okay, cancelled.';
         }
 
         case 'TRACK_ORDER': {
           navigate('orders');
           const latest = orders[0];
-          reply = latest
+          return latest
             ? t(lang, 'orderStatusReply', { status: latest.status.replace(/_/g, ' ') })
             : 'You have no active orders yet.';
-          break;
         }
 
         case 'RETURN_ITEM': {
           const latest = orders[0];
           if (!latest || latest.items.length === 0) {
-            reply = 'No recent order found to return.';
-            break;
+            return 'No recent order found to return.';
           }
           const item = latest.items[0];
-          const reason = parsed.entities.reason || 'Customer requested return';
+          const reason = action.entities.reason || 'Customer requested return';
           submitReturn(latest.id, item.title, reason);
           navigate('orders');
-          reply = t(lang, 'returnConfirmedReply', { title: item.title });
-          break;
+          return t(lang, 'returnConfirmedReply', { title: item.title });
         }
 
         case 'HELP': {
-          reply =
-            'Try saying: Show wireless earbuds under 2000, Add the second one, Compare 1 and 2, Show my cart, or Checkout.';
-          break;
+          return 'Try saying: Add PulseBuds Air ANC and go to checkout, or Fill my name, phone, address, city, state and pincode.';
         }
 
         default: {
-          reply = replyHint ?? t(lang, 'notUnderstoodReply');
-          pushChip({ type: 'error', text: 'Try: "Show wireless earbuds under 2000"' });
+          pushChip({ type: 'error', text: 'Try: "Add PulseBuds Air ANC and checkout"' });
+          return replyHint ?? t(lang, 'notUnderstoodReply');
         }
       }
-
-      setAssistantReply(reply);
-      setVoiceStatus(agoraActive ? 'listening' : 'speaking');
-      if (options.speak !== false && !agoraActive) {
-        speakReply(reply, lang, voiceGender);
-      }
-      window.setTimeout(() => {
-        setVoiceStatus((cur) => (cur === 'speaking' ? 'idle' : cur));
-      }, 900);
     },
     [
       addToCart,
-      agoraActive,
-      cart,
-      cartCount,
-      cartTotal,
+      addresses,
+      clearCart,
       lang,
       lastResults,
       navigate,
@@ -1150,14 +1246,59 @@ export const VibeCartProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       resolveRef,
       route,
       setLang,
+      signInWithGoogle,
       submitReturn,
+      triggerCheckoutSubmit,
       updateQuantity,
-      voiceGender,
     ]
+  );
+
+  const runVoiceCommand = useCallback(
+    async (text: string, options: { speak?: boolean } = { speak: true }) => {
+      const trimmed = text.trim();
+      if (!trimmed) return;
+
+      lastUserVoiceAtRef.current = Date.now();
+      setTranscript(trimmed);
+      setVoiceStatus('thinking');
+
+      const { parsed, replyHint } = await understand(trimmed, {
+        screen: route,
+        lang,
+        cartCount: cartRef.current.reduce((s, i) => s + i.quantity, 0),
+        visibleProducts: lastResults.slice(0, 6).map((p, idx) => ({
+          index: idx + 1,
+          id: p.id,
+          title: p.title,
+          price: p.price,
+        })),
+      });
+
+      const replies: string[] = [];
+      replies.push(executeParsedAction(parsed, parsed.followUpActions?.length ? undefined : replyHint));
+      if (parsed.followUpActions && parsed.followUpActions.length > 0) {
+        for (const nextAction of parsed.followUpActions) {
+          replies.push(executeParsedAction(nextAction));
+        }
+      }
+
+      const combinedReply = replies.filter(Boolean).join(' ');
+      setAssistantReply(combinedReply);
+      setVoiceStatus(agoraActive ? 'listening' : 'speaking');
+      if (options.speak !== false && !agoraActive) {
+        speakReply(combinedReply, lang, voiceGender);
+      }
+      window.setTimeout(() => {
+        setVoiceStatus((cur) => (cur === 'speaking' ? 'idle' : cur));
+      }, 900);
+    },
+    [agoraActive, executeParsedAction, lang, lastResults, route, voiceGender]
   );
 
   const runVoiceCommandRef = useRef(runVoiceCommand);
   runVoiceCommandRef.current = runVoiceCommand;
+  const executeParsedActionRef = useRef(executeParsedAction);
+  executeParsedActionRef.current = executeParsedAction;
 
   const startAgoraVoice = useCallback(async (): Promise<boolean> => {
     stopSpeaking();
@@ -1190,8 +1331,28 @@ export const VibeCartProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           setTranscript(text);
           runVoiceCommandRef.current(text, { speak: false });
         },
-        onAssistantTranscript: (text) => {
+        onAssistantTranscript: (text, isFinal) => {
           setAssistantReply(text);
+          // Safety net: if Agora's assistant announces adding a product or going to checkout
+          // and no user transcript triggered within the last 2.5s, sync the UI automatically.
+          if (isFinal && Date.now() - lastUserVoiceAtRef.current > 2500) {
+            const lower = text.toLowerCase();
+            if (/\badded\b/.test(lower)) {
+              const mentioned = productsRef.current.find((p) =>
+                lower.includes(p.title.toLowerCase())
+              );
+              if (mentioned) {
+                executeParsedActionRef.current({
+                  intent: 'ADD_TO_CART',
+                  confidence: 0.9,
+                  entities: { productRef: { id: mentioned.id } },
+                });
+              }
+            }
+            if (/\bcheckout\b/.test(lower) && cartRef.current.length > 0) {
+              navigate('checkout');
+            }
+          }
         },
         onSpeakingChange: (speaking) => {
           setVoiceStatus(speaking ? 'speaking' : 'listening');
@@ -1212,7 +1373,7 @@ export const VibeCartProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         },
       }
     );
-  }, [cartCount, lang, pushChip, route, voiceGender]);
+  }, [cartCount, lang, navigate, pushChip, route, voiceGender]);
 
   const stopAgoraVoice = useCallback(async () => {
     if (!agoraSessionRef.current) return;
@@ -1280,6 +1441,14 @@ export const VibeCartProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     submitReturn,
     addresses,
     saveAddress,
+    checkoutDraft,
+    setCheckoutDraft,
+    payMethod,
+    setPayMethod,
+    upiId,
+    setUpiId,
+    checkoutSubmitNonce,
+    triggerCheckoutSubmit,
     voiceStatus,
     setVoiceStatus,
     transcript,

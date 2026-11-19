@@ -1,5 +1,5 @@
 import React from 'react';
-import { Compass, Home, Package, ShoppingBag, SlidersHorizontal } from 'lucide-react';
+import { Compass, Home, Package, ShoppingBag, User } from 'lucide-react';
 import { t } from '../nlu/i18n';
 import { useVibeCart } from '../state/store';
 import type { RouteName } from '../types';
@@ -17,7 +17,7 @@ export const MobileBottomNav: React.FC = () => {
     { id: 'results', label: t(lang, 'navExplore'), icon: Compass },
     { id: 'cart', label: t(lang, 'navCart'), icon: ShoppingBag, badge: cartCount },
     { id: 'orders', label: t(lang, 'navOrders'), icon: Package },
-    { id: 'profile', label: t(lang, 'navProfile'), icon: SlidersHorizontal },
+    { id: 'profile', label: t(lang, 'navProfile'), icon: User },
   ];
 
   return (

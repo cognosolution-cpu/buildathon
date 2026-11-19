@@ -74,58 +74,188 @@ function detectLangSwitch(text: string): LangCode | undefined {
   return undefined;
 }
 
+const FILLER_PATTERN =
+  /\b(add|put|back|again|to|my|the|in|into|cart|basket|bag|please|buy|item|product|and|then|now|me|it)\b/gi;
+
+function cleanProductName(text: string): string {
+  return text
+    .replace(/\b(?:and|then)\s+(?:go\s+to|open|redirect(?:\s+me)?\s+to|take\s+me\s+to|proceed\s+to|move\s+to)?\s*(?:check\s*out|cart|payment).*$/i, '')
+    .replace(FILLER_PATTERN, ' ')
+    .replace(/[.,!?।]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function extractCheckoutEntities(raw: string): ParsedIntent['entities'] | null {
+  const fields: Partial<import('../types').CheckoutDraft> = {};
+  const nameMatch = raw.match(/\b(?:my\s+name\s+is|name\s*(?:is|:)?)\s+([a-zA-Z][a-zA-Z\s]{1,40}?)(?=\s*(?:,|phone|mobile|number|address|street|city|state|pin|pincode|zip|and\b|$))/i);
+  if (nameMatch?.[1]) fields.name = nameMatch[1].trim();
+
+  const phoneMatch = raw.match(/(?:\+91[\s-]?)?\b([6-9]\d{9})\b/);
+  if (phoneMatch?.[1]) fields.phone = phoneMatch[1];
+
+  const pinMatch = raw.match(/\b(\d{6})\b/);
+  if (pinMatch?.[1]) fields.pincode = pinMatch[1];
+
+  const lineMatch = raw.match(/\b(?:street\s+address|address\s+line(?:\s*1)?|address)\s*(?:is|:)?\s+([^,.\n]{5,90}?)(?=\s*(?:,|city|state|pin|pincode|phone|mobile|and\s+city|$))/i);
+  if (lineMatch?.[1]) fields.line1 = lineMatch[1].trim();
+
+  const cityMatch = raw.match(/\bcity\s*(?:is|:)?\s+([a-zA-Z\s]{2,35}?)(?=\s*(?:,|state|pin|pincode|phone|and\s+state|$))/i);
+  if (cityMatch?.[1]) fields.city = cityMatch[1].trim();
+
+  const stateMatch = raw.match(/\bstate\s*(?:is|:)?\s+([a-zA-Z\s]{2,35}?)(?=\s*(?:,|pin|pincode|phone|city|and\s+pin|$))/i);
+  if (stateMatch?.[1]) fields.state = stateMatch[1].trim();
+
+  const upiMatch = raw.match(/\b([a-zA-Z0-9._-]+@[a-zA-Z0-9]+)\b/);
+  const payMethod = /\bupi\b/i.test(raw)
+    ? ('upi' as const)
+    : /\b(card|credit card|debit card)\b/i.test(raw)
+      ? ('card' as const)
+      : undefined;
+  const useSavedAddress = /\b(use\s+saved\s+address|saved\s+address|default\s+address)\b/i.test(raw);
+  const submitPayment = /\b(confirm\s+payment|submit\s+payment|complete\s+payment|pay\s+now|place\s+order)\b/i.test(raw);
+
+  const hasAny =
+    Object.keys(fields).length > 0 ||
+    Boolean(payMethod) ||
+    Boolean(upiMatch) ||
+    useSavedAddress ||
+    submitPayment;
+
+  if (!hasAny) return null;
+
+  return {
+    checkoutFields: Object.keys(fields).length > 0 ? fields : undefined,
+    payMethod,
+    upiId: upiMatch?.[1],
+    useSavedAddress: useSavedAddress || undefined,
+    submitPayment: submitPayment || undefined,
+  };
+}
+
 export function ruleParse(transcript: string): ParsedIntent {
   const raw = transcript.trim();
-  const t = raw.toLowerCase();
+  const normalized = raw.replace(/[.,!?।]+/g, ' ').replace(/\s+/g, ' ').trim();
+  const t = normalized.toLowerCase();
 
   if (!t) return { intent: 'UNKNOWN', entities: {}, confidence: 0 };
 
   // 1. Language Switch
   if (
-    /\b(speak in|switch to|change language|language)\b/i.test(raw) ||
+    /\b(speak in|switch to|change language|language)\b/i.test(normalized) ||
     /(में बोलो|ಮಾತನಾಡು|பேசவும்|తెలుగులో)/i.test(raw) ||
-    /^(हिन्दी|हिंदी|ಕನ್ನಡ|தமிழ்|తెలుగు)$/i.test(raw)
+    /^(हिन्दी|हिंदी|ಕನ್ನಡ|தமிழ்|తెలుగు)$/i.test(normalized)
   ) {
     const lang = detectLangSwitch(raw);
     if (lang) return { intent: 'CHANGE_LANGUAGE', entities: { lang }, confidence: 0.95 };
   }
 
   // 2. Help
-  if (/^(help|what can you do|commands|मदद)\b/i.test(raw)) {
+  if (/^(help|what can you do|commands|मदद)\b/i.test(normalized)) {
     return { intent: 'HELP', entities: {}, confidence: 0.92 };
   }
 
   // 3. Explicit Confirm / Deny
-  if (/^(yes|yeah|yep|confirm|go ahead|proceed|sure|ok|okay|haan|हाँ|हां|ಹೌದು)$/i.test(raw)) {
+  if (/^(yes|yeah|yep|confirm|go ahead|proceed|sure|ok|okay|haan|हाँ|हां|ಹೌದು)$/i.test(normalized)) {
     return { intent: 'CONFIRM', entities: {}, confidence: 0.95 };
   }
-  if (/^(no|nope|cancel|stop|don't|change address|nahi|नहीं|ಬೇಡ)$/i.test(raw)) {
+  if (/^(no|nope|cancel|stop|don't|change address|nahi|नहीं|ಬೇಡ)$/i.test(normalized)) {
     return { intent: 'DENY', entities: {}, confidence: 0.95 };
   }
 
-  // 4. Show Cart (English + Hindi + Kannada)
-  if (
-    /\b(show|open|view|check|what(?:'s|\s+is)\s+in)\s+(my\s+)?cart\b/i.test(t) ||
-    /(मेरा\s*कार्ट|कार्ट\s*दिखाओ|ಕಾರ್ಟ್)/i.test(raw)
-  ) {
+  // 4. Sign in with Google / Open Sign in / Profile
+  if (/\b(sign\s*in\s+with\s+google|continue\s+with\s+google|google\s+login|google\s+sign\s*in)\b/i.test(normalized)) {
+    return { intent: 'SIGN_IN_GOOGLE', entities: {}, confidence: 0.95 };
+  }
+
+  // 5. Clear cart
+  if (/\b(clear|empty)\s+(my\s+)?cart\b/i.test(normalized)) {
+    return { intent: 'CLEAR_CART', entities: {}, confidence: 0.94 };
+  }
+
+  // 6. Compound Add-to-Cart + Checkout/Cart ("Add PulseBuds Air ANC and redirect to checkout")
+  const wantsCheckout =
+    /\b(check\s*out|pay\s*now|proceed\s+to\s+pay|place\s+(my\s+)?order|buy\s*now|payment\s*page|ऑर्डर करो|पेमेंट)\b/i.test(
+      normalized
+    );
+  const wantsCartView =
+    /\b(show|open|view|go\s+to|take\s+me\s+to|redirect(?:\s+me)?\s+to|check|what(?:'s|\s+is)\s+in)\s+(my\s+)?cart\b/i.test(
+      t
+    ) || /(मेरा\s*कार्ट|कार्ट\s*दिखाओ|ಕಾರ್ಟ್)/i.test(raw);
+  const wantsAdd = /\b(add|put|जोड़ो|डालो|ಸೇರಿಸಿ)\b/i.test(normalized);
+
+  if (wantsAdd && (wantsCheckout || wantsCartView)) {
+    const ref = extractRef(normalized) ?? { name: cleanProductName(normalized) };
+    const color = COLOR_WORDS.find((c) => t.includes(c));
+    const qtyMatch = t.match(/\b(\d+)\s*(?:pcs|pieces|items|units)?\b/);
+    const quantity = qtyMatch && !t.includes('number') ? Math.min(Number(qtyMatch[1]), 10) : 1;
+    const followUp: ParsedIntent = wantsCheckout
+      ? { intent: 'CHECKOUT', entities: {}, confidence: 0.95 }
+      : { intent: 'SHOW_CART', entities: {}, confidence: 0.95 };
+    return {
+      intent: 'ADD_TO_CART',
+      entities: { productRef: ref, variant: color, quantity },
+      confidence: 0.94,
+      followUpActions: [followUp],
+    };
+  }
+
+  // 7. Checkout Form Filling & Payment Controls (e.g. "fill my name Piyush, phone 9876543210, ...")
+  const checkoutEntities = extractCheckoutEntities(raw);
+  if (checkoutEntities && !wantsAdd) {
+    // If user gave a rich address string without explicit keywords, let Gemini NLU assist if only 1 field was found
+    const fieldCount = Object.keys(checkoutEntities.checkoutFields ?? {}).length;
+    const looksLikeFullAddressSpeech =
+      /\b(fill|enter|set|my|address|checkout|deliver|ship)\b/i.test(t) && raw.split(/\s+/).length >= 6;
+    const conf = looksLikeFullAddressSpeech && fieldCount < 2 && !checkoutEntities.useSavedAddress && !checkoutEntities.payMethod ? 0.6 : 0.92;
+    return {
+      intent: 'FILL_CHECKOUT',
+      entities: checkoutEntities,
+      confidence: conf,
+    };
+  }
+
+  // 8. Show Cart (English + Hindi + Kannada)
+  if (wantsCartView) {
     return { intent: 'SHOW_CART', entities: {}, confidence: 0.95 };
   }
 
-  // 5. Checkout
-  if (/\b(checkout|pay now|proceed to pay|place order|buy now|payment|ऑर्डर करो|पेमेंट)\b/i.test(raw)) {
+  // 9. Checkout Navigation
+  if (wantsCheckout) {
     return { intent: 'CHECKOUT', entities: {}, confidence: 0.95 };
   }
 
-  // 6. Track Order
-  if (/\b(where is my order|track(\s+my)?\s+order|order status|delivery status|मेरा ऑर्डर|ऑर्डर कहाँ)\b/i.test(raw)) {
+  // 10. General Screen Navigation ("open profile", "go to sign in", "go home", "open explore")
+  if (/\b(go\s+to|open|show|take\s+me\s+to|redirect(?:\s+me)?\s+to|navigate\s+to|view)\b/i.test(normalized)) {
+    if (/\b(profile|sign\s*in|login|account|settings|preferences)\b/i.test(normalized)) {
+      return { intent: 'NAVIGATE', entities: { targetRoute: 'profile' }, confidence: 0.94 };
+    }
+    if (/\b(home|main\s*page|start)\b/i.test(normalized)) {
+      return { intent: 'NAVIGATE', entities: { targetRoute: 'home' }, confidence: 0.94 };
+    }
+    if (/\b(explore|catalog|products|store|shop)\b/i.test(normalized)) {
+      return { intent: 'NAVIGATE', entities: { targetRoute: 'results' }, confidence: 0.92 };
+    }
+    if (/\b(compare|comparison)\b/i.test(normalized)) {
+      return { intent: 'NAVIGATE', entities: { targetRoute: 'compare' }, confidence: 0.92 };
+    }
+    if (/\b(orders|my\s+orders)\b/i.test(normalized)) {
+      return { intent: 'NAVIGATE', entities: { targetRoute: 'orders' }, confidence: 0.92 };
+    }
+  }
+
+  // 11. Track Order
+  if (/\b(where is my order|track(\s+my)?\s+order|order status|delivery status|मेरा ऑर्डर|ऑर्डर कहाँ)\b/i.test(normalized)) {
     return { intent: 'TRACK_ORDER', entities: {}, confidence: 0.94 };
   }
 
-  // 7. Return Item
-  if (/\b(return|refund|replace|वापस|रिटर्न)\b/i.test(raw)) {
-    const reasonMatch = raw.match(/(?:because|reason|wrong|defective|damaged|size|broken)(.*)$/i);
-    const reason = reasonMatch ? reasonMatch[0].trim() : raw.replace(/\b(i want to|please|return|the|my)\b/gi, '').trim();
-    const productRef = extractRef(raw) ?? { name: raw };
+  // 12. Return Item
+  if (/\b(return|refund|replace|वापस|रिटर्न)\b/i.test(normalized)) {
+    const reasonMatch = normalized.match(/(?:because|reason|wrong|defective|damaged|size|broken)(.*)$/i);
+    const reason = reasonMatch
+      ? reasonMatch[0].trim()
+      : normalized.replace(/\b(i want to|please|return|the|my)\b/gi, '').trim();
+    const productRef = extractRef(normalized) ?? { name: cleanProductName(normalized) };
     return {
       intent: 'RETURN_ITEM',
       entities: { productRef, reason: reason || 'Customer requested return' },
@@ -133,16 +263,16 @@ export function ruleParse(transcript: string): ParsedIntent {
     };
   }
 
-  // 8. Compare Products
-  if (/\b(compare|vs|versus|difference between|तुलना)\b/i.test(raw)) {
+  // 13. Compare Products
+  if (/\b(compare|vs|versus|difference between|तुलना)\b/i.test(normalized)) {
     const refs: ProductRef[] = [];
     for (const [word, idx] of Object.entries(ORDINAL_MAP)) {
       const re = new RegExp(`\\b${word}\\b`, 'i');
-      if (re.test(raw) && !refs.some((r) => r.index === idx)) {
+      if (re.test(normalized) && !refs.some((r) => r.index === idx)) {
         refs.push({ index: idx });
       }
     }
-    const digitMatches = raw.matchAll(/\b([1-6])\b/g);
+    const digitMatches = normalized.matchAll(/\b([1-6])\b/g);
     for (const m of digitMatches) {
       const idx = Number(m[1]);
       if (!refs.some((r) => r.index === idx)) refs.push({ index: idx });
@@ -157,30 +287,28 @@ export function ruleParse(transcript: string): ParsedIntent {
     };
   }
 
-  // 9. Remove from Cart
-  if (/\b(remove|delete|drop|take out|हटाओ|निकालो)\b/i.test(raw)) {
-    const productRef = extractRef(raw) ?? {
-      name: raw.replace(/\b(remove|delete|from|my|cart|the|please|हटाओ)\b/gi, '').trim(),
+  // 14. Remove from Cart
+  if (/\b(remove|delete|drop|take out|हटाओ|निकालो)\b/i.test(normalized)) {
+    const productRef = extractRef(normalized) ?? {
+      name: cleanProductName(normalized.replace(/\b(remove|delete|drop|take out|from|हटाओ|निकालो)\b/gi, ' ')),
     };
     return { intent: 'REMOVE_FROM_CART', entities: { productRef }, confidence: 0.9 };
   }
 
-  // 10. Update Quantity
+  // 15. Update Quantity
   if (/\b(make it|set quantity|quantity|change quantity)\b/i.test(t)) {
     const qtyMatch = t.match(/\b(\d+|one|two|three|four|five)\b/);
     const quantity = qtyMatch ? parseNumberWords(qtyMatch[1]) ?? ORDINAL_MAP[qtyMatch[1]] ?? 1 : 1;
     return {
       intent: 'UPDATE_QUANTITY',
-      entities: { productRef: extractRef(raw) ?? { this: true }, quantity },
+      entities: { productRef: extractRef(normalized) ?? { this: true }, quantity },
       confidence: 0.88,
     };
   }
 
-  // 11. Add to Cart ("add the second one", "add this in black")
-  if (/\b(add|put|जोड़ो|डालो|ಸೇರಿಸಿ)\b/i.test(raw)) {
-    const productRef = extractRef(raw) ?? {
-      name: raw.replace(/\b(add|put|to|my|cart|the|in|please|buy)\b/gi, '').trim(),
-    };
+  // 16. Add to Cart ("add the second one", "add PulseBuds Air ANC to my cart")
+  if (wantsAdd) {
+    const productRef = extractRef(normalized) ?? { name: cleanProductName(normalized) };
     const color = COLOR_WORDS.find((c) => t.includes(c));
     const qtyMatch = t.match(/\b(\d+)\s*(?:pcs|pieces|items|units)?\b/);
     const quantity = qtyMatch && !t.includes('number') ? Math.min(Number(qtyMatch[1]), 10) : 1;
@@ -191,11 +319,11 @@ export function ruleParse(transcript: string): ParsedIntent {
     };
   }
 
-  // 12. Ask about product / open product detail ("tell me more about the second one", "is it waterproof?")
+  // 17. Ask about product / open product detail ("tell me more about the second one", "is it waterproof?")
   if (
-    /\b(tell me more|details|open|inspect|show details|is it|does it|battery|waterproof|warranty)\b/i.test(t)
+    /\b(tell me more|details|inspect|show details|is it|does it|battery|waterproof|warranty)\b/i.test(t)
   ) {
-    const productRef = extractRef(raw) ?? { this: true };
+    const productRef = extractRef(normalized) ?? { this: true };
     return {
       intent: 'ASK_PRODUCT',
       entities: { productRef, question: raw },
@@ -203,7 +331,7 @@ export function ruleParse(transcript: string): ParsedIntent {
     };
   }
 
-  // 13. Recommend ("gift for my mom", "best budget phone")
+  // 18. Recommend ("gift for my mom", "best budget phone")
   if (/\b(recommend|suggest|gift for|best budget|top rated)\b/i.test(t)) {
     const maxMatch = t.match(/\b(?:under|below|less than|within|budget)\s+([^?.!]+?)$/);
     const maxPrice = maxMatch ? parseNumberWords(maxMatch[1]) : undefined;
@@ -218,18 +346,18 @@ export function ruleParse(transcript: string): ParsedIntent {
     };
   }
 
-  // 14. Search Products ("show me wireless earbuds under 2000", "running shoes under 3000")
-  const priceMatch = raw.match(
+  // 19. Search Products ("show me wireless earbuds under 2000", "running shoes under 3000")
+  const priceMatch = normalized.match(
     /(?:under|below|less than|within|cheaper than|से कम|ಒಳಗೆ)\s+([^\n?.!]+?)(?:\s*(?:rupees|rs|₹|रुपये))?$/i
   );
   const maxPrice = priceMatch ? parseNumberWords(priceMatch[1]) : undefined;
 
   if (
-    /\b(show|find|search|looking for|i want|i need|browse|explore|दिखाओ|खोजो|ತೋರಿಸು)\b/i.test(raw) ||
-    inferCategory(raw) !== undefined ||
+    /\b(show|find|search|looking for|i want|i need|browse|explore|दिखाओ|खोजो|ತೋರಿಸು)\b/i.test(normalized) ||
+    inferCategory(normalized) !== undefined ||
     maxPrice !== undefined
   ) {
-    const cleanedQuery = raw
+    const cleanedQuery = normalized
       .replace(/\b(show me|find me|find|search for|search|looking for|i want|i need|browse|दिखाओ|खोजो|ತೋರಿಸು)\b/gi, '')
       .replace(/(?:under|below|less than|within|cheaper than|से कम|ಒಳಗೆ).*$/i, '')
       .replace(/\b(please|some|good|best)\b/gi, '')
@@ -239,7 +367,7 @@ export function ruleParse(transcript: string): ParsedIntent {
       intent: 'SEARCH_PRODUCTS',
       entities: {
         query: cleanedQuery,
-        category: inferCategory(raw),
+        category: inferCategory(normalized),
         maxPrice,
       },
       confidence: 0.85,

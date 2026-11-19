@@ -40,10 +40,10 @@ export const ProfileScreen: React.FC = () => {
     <div className="space-y-6 max-w-3xl">
       <div>
         <h1 className="font-display text-2xl sm:text-3xl font-semibold text-[#F5F5F5]">
-          Preferences & Voice Settings
+          Profile, Sign In & Settings
         </h1>
         <p className="text-sm text-[#9A9A9A] mt-1">
-          Configure spoken assistant language, 3D rendering mode, and saved delivery addresses.
+          Sign in to sync orders and addresses, or customize your voice assistant and 3D view.
         </p>
       </div>
 

@@ -131,3 +131,48 @@ test('resolveMurfVoice maps Indian languages and genders to Murf Falcon 2 voices
   assert.equal(resolveMurfVoice('te-IN', 'male').voiceId, 'Samar');
   assert.equal(resolveMurfVoice('kn-IN', 'male').voiceId, 'Harman');
 });
+
+test('ruleParse strips punctuation and chains compound add-to-cart + checkout commands', () => {
+  const single = ruleParse('Add PulseBuds Air ANC back to my cart.');
+  assert.equal(single.intent, 'ADD_TO_CART');
+  assert.equal(single.entities.productRef?.name, 'PulseBuds Air ANC');
+
+  const compound = ruleParse('Add PulseBuds Air ANC to my cart and redirect to checkout.');
+  assert.equal(compound.intent, 'ADD_TO_CART');
+  assert.equal(compound.entities.productRef?.name, 'PulseBuds Air ANC');
+  assert.equal(compound.followUpActions?.[0]?.intent, 'CHECKOUT');
+
+  const navProfile = ruleParse('Open profile');
+  assert.equal(navProfile.intent, 'NAVIGATE');
+  assert.equal(navProfile.entities.targetRoute, 'profile');
+});
+
+test('ruleParse and validateParsedIntent handle checkout field filling and chained actions', () => {
+  const fill = ruleParse(
+    'My name is Piyush Sharma, phone 9876543210, address 42 MG Road Indiranagar, city Bengaluru, state Karnataka, pincode 560038'
+  );
+  assert.equal(fill.intent, 'FILL_CHECKOUT');
+  assert.equal(fill.entities.checkoutFields?.name, 'Piyush Sharma');
+  assert.equal(fill.entities.checkoutFields?.phone, '9876543210');
+  assert.equal(fill.entities.checkoutFields?.line1, '42 MG Road Indiranagar');
+  assert.equal(fill.entities.checkoutFields?.city, 'Bengaluru');
+  assert.equal(fill.entities.checkoutFields?.state, 'Karnataka');
+  assert.equal(fill.entities.checkoutFields?.pincode, '560038');
+
+  const validated = validateParsedIntent({
+    intent: 'FILL_CHECKOUT',
+    confidence: 0.95,
+    entities: {
+      checkoutFields: { name: 'Piyush', phone: '+91 9876543210', pincode: '560038' },
+      payMethod: 'upi',
+      upiId: 'piyush@okaxis',
+      submitPayment: true,
+    },
+    followUpActions: [{ intent: 'CHECKOUT', entities: {} }],
+  });
+  assert.equal(validated.parsed.intent, 'FILL_CHECKOUT');
+  assert.equal(validated.parsed.entities.checkoutFields?.phone, '9876543210');
+  assert.equal(validated.parsed.entities.payMethod, 'upi');
+  assert.equal(validated.parsed.entities.submitPayment, true);
+  assert.equal(validated.parsed.followUpActions?.[0]?.intent, 'CHECKOUT');
+});

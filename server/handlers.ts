@@ -57,13 +57,74 @@ function buildAgoraRtcToken(appId: string, appCert: string, channelName: string,
   );
 }
 
+const NLU_ENTITIES_PROPERTIES = {
+  query: { type: Type.STRING, description: 'Product search keywords.' },
+  category: {
+    type: Type.STRING,
+    description: 'Optional category slug: audio, wearables, smart-home, footwear, peripherals.',
+  },
+  maxPrice: { type: Type.NUMBER, description: 'Maximum price in INR.' },
+  minPrice: { type: Type.NUMBER, description: 'Minimum price in INR.' },
+  color: { type: Type.STRING, description: 'Requested color or finish.' },
+  quantity: { type: Type.INTEGER, description: 'Item quantity (1-10).' },
+  variant: { type: Type.STRING, description: 'Color/variant name.' },
+  question: { type: Type.STRING, description: 'Product spec question.' },
+  occasion: { type: Type.STRING, description: 'Recommendation context or occasion.' },
+  reason: { type: Type.STRING, description: 'Return reason.' },
+  lang: {
+    type: Type.STRING,
+    description: 'Language code: en-IN, hi-IN, kn-IN, ta-IN, or te-IN.',
+  },
+  targetRoute: {
+    type: Type.STRING,
+    description: 'Target screen route: home, results, product, compare, cart, checkout, orders, profile.',
+  },
+  checkoutFields: {
+    type: Type.OBJECT,
+    description: 'Delivery address form fields on checkout page.',
+    properties: {
+      name: { type: Type.STRING, description: 'Recipient full name.' },
+      phone: { type: Type.STRING, description: '10-digit Indian mobile number.' },
+      line1: { type: Type.STRING, description: 'Street, flat, building address.' },
+      city: { type: Type.STRING, description: 'City name.' },
+      state: { type: Type.STRING, description: 'State name.' },
+      pincode: { type: Type.STRING, description: '6-digit Indian PIN code.' },
+    },
+  },
+  payMethod: { type: Type.STRING, description: 'card or upi.' },
+  upiId: { type: Type.STRING, description: 'UPI ID like name@upi.' },
+  useSavedAddress: { type: Type.BOOLEAN, description: 'True if user wants saved address applied.' },
+  submitPayment: { type: Type.BOOLEAN, description: 'True if user says pay now / submit payment.' },
+  productRef: {
+    type: Type.OBJECT,
+    properties: {
+      index: { type: Type.INTEGER, description: '1-based index of visible product.' },
+      id: { type: Type.STRING, description: 'Product id/slug.' },
+      name: { type: Type.STRING, description: 'Product title fragment.' },
+      this: { type: Type.BOOLEAN, description: 'True if user refers to current item.' },
+    },
+  },
+  productRefs: {
+    type: Type.ARRAY,
+    items: {
+      type: Type.OBJECT,
+      properties: {
+        index: { type: Type.INTEGER },
+        id: { type: Type.STRING },
+        name: { type: Type.STRING },
+        this: { type: Type.BOOLEAN },
+      },
+    },
+  },
+};
+
 const NLU_RESPONSE_SCHEMA = {
   type: Type.OBJECT,
   properties: {
     intent: {
       type: Type.STRING,
       description:
-        'One of: SEARCH_PRODUCTS, RECOMMEND, ASK_PRODUCT, ADD_TO_CART, REMOVE_FROM_CART, UPDATE_QUANTITY, COMPARE, SHOW_CART, CHECKOUT, CONFIRM, DENY, TRACK_ORDER, RETURN_ITEM, CHANGE_LANGUAGE, HELP, UNKNOWN',
+        'One of: SEARCH_PRODUCTS, RECOMMEND, ASK_PRODUCT, ADD_TO_CART, REMOVE_FROM_CART, UPDATE_QUANTITY, CLEAR_CART, COMPARE, SHOW_CART, CHECKOUT, FILL_CHECKOUT, NAVIGATE, SIGN_IN_GOOGLE, CONFIRM, DENY, TRACK_ORDER, RETURN_ITEM, CHANGE_LANGUAGE, HELP, UNKNOWN',
     },
     confidence: {
       type: Type.NUMBER,
@@ -75,45 +136,19 @@ const NLU_RESPONSE_SCHEMA = {
     },
     entities: {
       type: Type.OBJECT,
-      properties: {
-        query: { type: Type.STRING, description: 'Product search keywords.' },
-        category: {
-          type: Type.STRING,
-          description: 'Optional category slug: audio, wearables, smart-home, footwear, peripherals.',
+      properties: NLU_ENTITIES_PROPERTIES,
+    },
+    followUpActions: {
+      type: Type.ARRAY,
+      description: 'Optional additional actions when the user chains multiple requests (e.g. add item AND go to checkout).',
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          intent: { type: Type.STRING },
+          confidence: { type: Type.NUMBER },
+          entities: { type: Type.OBJECT, properties: NLU_ENTITIES_PROPERTIES },
         },
-        maxPrice: { type: Type.NUMBER, description: 'Maximum price in INR.' },
-        minPrice: { type: Type.NUMBER, description: 'Minimum price in INR.' },
-        color: { type: Type.STRING, description: 'Requested color or finish.' },
-        quantity: { type: Type.INTEGER, description: 'Item quantity (1-10).' },
-        variant: { type: Type.STRING, description: 'Color/variant name.' },
-        question: { type: Type.STRING, description: 'Product spec question.' },
-        occasion: { type: Type.STRING, description: 'Recommendation context or occasion.' },
-        reason: { type: Type.STRING, description: 'Return reason.' },
-        lang: {
-          type: Type.STRING,
-          description: 'Language code: en-IN, hi-IN, kn-IN, ta-IN, or te-IN.',
-        },
-        productRef: {
-          type: Type.OBJECT,
-          properties: {
-            index: { type: Type.INTEGER, description: '1-based index of visible product.' },
-            id: { type: Type.STRING, description: 'Product id/slug.' },
-            name: { type: Type.STRING, description: 'Product title fragment.' },
-            this: { type: Type.BOOLEAN, description: 'True if user refers to current item.' },
-          },
-        },
-        productRefs: {
-          type: Type.ARRAY,
-          items: {
-            type: Type.OBJECT,
-            properties: {
-              index: { type: Type.INTEGER },
-              id: { type: Type.STRING },
-              name: { type: Type.STRING },
-              this: { type: Type.BOOLEAN },
-            },
-          },
-        },
+        required: ['intent', 'entities'],
       },
     },
   },
@@ -236,11 +271,13 @@ export async function handleAgoraStart(body: Record<string, unknown>): Promise<H
   };
 
   const systemPrompt = `You are VibeCart's live conversational shopping assistant powered by Agora Voice AI and Murf Falcon 2.
-Speak naturally and concisely (under 25 words per reply) in the shopper's language (${lang}). Never use markdown bullets or emojis in spoken text.
+Speak naturally and concisely (under 24 words per reply) in the shopper's language (${lang}). Never use markdown bullets or emojis in spoken text.
+Important: The VibeCart app automatically executes navigation, cart additions/removals, product comparisons, checkout address form filling, and payment triggers in real time as the shopper speaks.
+Never claim there was a technical issue or say you cannot access the cart or checkout form.
 Store catalog (prices in Indian Rupees):
 ${catalogSummary}
 Current context: screen=${String(context.screen ?? 'home')}, cartCount=${Number(context.cartCount ?? 0)}.
-Help shoppers discover products, compare two items, add numbered items to cart, check cart/checkout, or track/return orders.`;
+On checkout, help fill name, 10-digit mobile, street address, city, state, and 6-digit PIN code.`;
 
   try {
     const joinRes = await fetch(
@@ -259,6 +296,10 @@ Help shoppers discover products, compare two items, add numbered items to cart, 
             agent_rtc_uid: String(agentUid),
             remote_rtc_uids: [userUid],
             idle_timeout: 120,
+            parameters: {
+              data_channel: 'datastream',
+              enable_error_message: true,
+            },
             asr: {
               vendor: 'ares',
               language: voice.asrLanguage,
@@ -550,7 +591,7 @@ export async function handleNlu(body: Record<string, unknown>): Promise<HandlerR
   }
 
   const systemInstruction = `You are the voice NLU intent router for VibeCart (an Indian dark-mode electronics & gear store).
-Map natural, conversational, Hinglish, Hindi, Kannada, Tamil, Telugu, or English shopping requests into a structured intent + entities JSON.
+Map natural, conversational, Hinglish, Hindi, Kannada, Tamil, Telugu, or English shopping requests into structured intent + entities JSON.
 Never invent products or prices; only extract what the user wants or refers to.
 Active store categories:
 - audio (wireless earbuds, ANC headphones)
@@ -561,6 +602,9 @@ Active store categories:
 Extraction rules:
 - If the user mentions any budget or price cap (e.g. "around 3000", "under 2k", "budget 5000"), always set entities.maxPrice as a number in INR.
 - Map activity/occasion words to the best matching category and search query (e.g. "morning jog" -> category="footwear", query="running shoes"; "gaming" -> category="peripherals", query="keyboard"; "gym music" -> category="audio", query="wireless earbuds").
+- Use FILL_CHECKOUT whenever the user provides delivery details (name, phone, street line1, city, state, pincode), selects card/upi, provides upiId, asks to use saved address, or says pay now / submit payment.
+- Use NAVIGATE with targetRoute (home, results, product, compare, cart, checkout, orders, profile) when the user asks to go to or open a page.
+- Use followUpActions if the user asks for multiple actions in one turn (e.g., ADD_TO_CART followed by CHECKOUT, or FILL_CHECKOUT followed by CHECKOUT).
 - Only populate entities.reason when intent is RETURN_ITEM.
 Context:
 - current screen: ${String(context.screen ?? 'home')}

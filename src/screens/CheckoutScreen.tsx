@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { CreditCard, Lock, ShieldCheck, Smartphone, X } from 'lucide-react';
 import { isRazorpayConfigured, launchRazorpayCheckout } from '../lib/razorpay';
 import { isSupabaseConfigured } from '../lib/supabase';
@@ -23,6 +23,13 @@ export const CheckoutScreen: React.FC = () => {
     cartTotal,
     addresses,
     saveAddress,
+    checkoutDraft: form,
+    setCheckoutDraft: setForm,
+    payMethod,
+    setPayMethod,
+    upiId,
+    setUpiId,
+    checkoutSubmitNonce,
     createOrder,
     clearCart,
     refreshOrders,
@@ -32,43 +39,13 @@ export const CheckoutScreen: React.FC = () => {
 
   const liveGatewayReady = isRazorpayConfigured;
   const defaultAddr = addresses[0];
-  const [form, setForm] = useState<Omit<Address, 'id'>>({
-    name: '',
-    phone: '',
-    line1: '',
-    city: '',
-    state: '',
-    pincode: '',
-  });
   const [errors, setErrors] = useState<FormErrors>({});
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
   const [launchingGateway, setLaunchingGateway] = useState(false);
-  const [payMethod, setPayMethod] = useState<'card' | 'upi'>('card');
   const [cardNumber, setCardNumber] = useState('4111 1111 1111 1111');
-  const [upiId, setUpiId] = useState('success@razorpay');
   const [paymentError, setPaymentError] = useState('');
 
-  if (cart.length === 0) {
-    return (
-      <div className="rounded-[20px] vc-glass p-10 text-center max-w-xl mx-auto space-y-4">
-        <h1 className="font-display text-2xl font-semibold text-[#F5F5F5]">
-          No items ready for checkout
-        </h1>
-        <p className="text-sm text-[#9A9A9A]">
-          Add an item to your cart first before starting checkout.
-        </p>
-        <button
-          type="button"
-          onClick={() => navigate('results')}
-          className="h-12 px-6 rounded-[14px] bg-white text-[#050505] text-sm font-semibold cursor-pointer"
-        >
-          Browse Gear
-        </button>
-      </div>
-    );
-  }
-
-  const validateForm = (): boolean => {
+  const validateForm = useCallback((): boolean => {
     const next: FormErrors = {};
     if (form.name.trim().length < 2) next.name = 'Enter recipient full name';
     if (!/^\d{10}$/.test(form.phone.replace(/\s+/g, ''))) {
@@ -81,10 +58,9 @@ export const CheckoutScreen: React.FC = () => {
 
     setErrors(next);
     return Object.keys(next).length === 0;
-  };
+  }, [form]);
 
-  const handleContinueToPay = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const submitCheckout = useCallback(async () => {
     if (!validateForm()) return;
     setPaymentError('');
 
@@ -117,6 +93,48 @@ export const CheckoutScreen: React.FC = () => {
     }
 
     setPaymentModalOpen(true);
+  }, [
+    cart,
+    clearCart,
+    createOrder,
+    form,
+    liveGatewayReady,
+    navigate,
+    pushChip,
+    refreshOrders,
+    saveAddress,
+    validateForm,
+  ]);
+
+  useEffect(() => {
+    if (checkoutSubmitNonce > 0 && cart.length > 0) {
+      submitCheckout();
+    }
+  }, [checkoutSubmitNonce]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (cart.length === 0) {
+    return (
+      <div className="rounded-[20px] vc-glass p-10 text-center max-w-xl mx-auto space-y-4">
+        <h1 className="font-display text-2xl font-semibold text-[#F5F5F5]">
+          No items ready for checkout
+        </h1>
+        <p className="text-sm text-[#9A9A9A]">
+          Add an item to your cart first before starting checkout.
+        </p>
+        <button
+          type="button"
+          onClick={() => navigate('results')}
+          className="h-12 px-6 rounded-[14px] bg-white text-[#050505] text-sm font-semibold cursor-pointer"
+        >
+          Browse Gear
+        </button>
+      </div>
+    );
+  }
+
+  const handleContinueToPay = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await submitCheckout();
   };
 
   const fillSavedAddress = () => {

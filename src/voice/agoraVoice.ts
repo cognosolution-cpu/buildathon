@@ -31,6 +31,7 @@ interface AgoraStreamPayload {
   text?: string;
   final?: boolean;
   is_final?: boolean;
+  turn_status?: number;
   turn_id?: string | number;
   message_id?: string;
 }
@@ -47,6 +48,7 @@ export class AgoraVoiceSession {
   private aborted = false;
   private chunkMap = new Map<string, ChunkAccumulator>();
   private processedTurnKeys = new Set<string>();
+  private latestPendingUserTurn: { key: string; text: string } | null = null;
 
   isActive(): boolean {
     return this.active;
@@ -118,6 +120,7 @@ export class AgoraVoiceSession {
       this.client = client;
       this.chunkMap.clear();
       this.processedTurnKeys.clear();
+      this.latestPendingUserTurn = null;
 
       client.on('user-published', async (user, mediaType) => {
         if (mediaType !== 'audio') return;
@@ -211,6 +214,19 @@ export class AgoraVoiceSession {
     }
   }
 
+  private emitFinalUserTurn(key: string, text: string, callbacks: AgoraSessionCallbacks): void {
+    if (this.processedTurnKeys.has(key)) return;
+    this.processedTurnKeys.add(key);
+    if (this.processedTurnKeys.size > 50) {
+      const oldest = this.processedTurnKeys.values().next().value;
+      if (oldest) this.processedTurnKeys.delete(oldest);
+    }
+    if (this.latestPendingUserTurn?.key === key) {
+      this.latestPendingUserTurn = null;
+    }
+    callbacks.onUserFinalTranscript?.(text);
+  }
+
   private handleStreamMessage(rawData: Uint8Array, callbacks: AgoraSessionCallbacks): void {
     try {
       const decoded = new TextDecoder().decode(rawData).trim();
@@ -235,11 +251,17 @@ export class AgoraVoiceSession {
             if (entry.parts.size < entry.total) {
               return;
             }
+            const baseIdx = entry.parts.has(0) ? 0 : 1;
             const combinedBase64 = Array.from({ length: entry.total }, (_, idx) =>
-              entry!.parts.get(idx + 1) ?? entry!.parts.get(idx) ?? ''
+              entry!.parts.get(idx + baseIdx) ?? ''
             ).join('');
             this.chunkMap.delete(msgId);
-            jsonText = atob(combinedBase64);
+            const binary = atob(combinedBase64);
+            const bytes = new Uint8Array(binary.length);
+            for (let i = 0; i < binary.length; i += 1) {
+              bytes[i] = binary.charCodeAt(i);
+            }
+            jsonText = new TextDecoder('utf-8').decode(bytes);
           }
         }
       }
@@ -248,21 +270,23 @@ export class AgoraVoiceSession {
       const text = typeof payload.text === 'string' ? payload.text.trim() : '';
       if (!text) return;
 
-      const isFinal = Boolean(payload.is_final ?? payload.final);
+      const isFinal =
+        payload.is_final === true || payload.final === true || payload.turn_status === 1;
+
       if (payload.object === 'user.transcription') {
+        const turnKey = `${payload.turn_id ?? payload.message_id ?? text}`;
         if (!isFinal) {
+          this.latestPendingUserTurn = { key: turnKey, text };
           callbacks.onUserInterimTranscript?.(text);
           return;
         }
-        const turnKey = `${payload.turn_id ?? payload.message_id ?? text}`;
-        if (this.processedTurnKeys.has(turnKey)) return;
-        this.processedTurnKeys.add(turnKey);
-        if (this.processedTurnKeys.size > 50) {
-          const oldest = this.processedTurnKeys.values().next().value;
-          if (oldest) this.processedTurnKeys.delete(oldest);
-        }
-        callbacks.onUserFinalTranscript?.(text);
+        this.emitFinalUserTurn(turnKey, text, callbacks);
       } else if (payload.object === 'assistant.transcription') {
+        if (this.latestPendingUserTurn) {
+          const pending = this.latestPendingUserTurn;
+          this.latestPendingUserTurn = null;
+          this.emitFinalUserTurn(pending.key, pending.text, callbacks);
+        }
         callbacks.onAssistantTranscript?.(text, isFinal);
       }
     } catch {

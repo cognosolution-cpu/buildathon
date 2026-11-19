@@ -114,6 +114,17 @@ export type VoiceGender = 'female' | 'male';
 
 export type VoiceStatus = 'idle' | 'connecting' | 'listening' | 'thinking' | 'speaking' | 'error';
 
+export type PaymentMethod = 'card' | 'upi';
+
+export interface CheckoutDraft {
+  name: string;
+  phone: string;
+  line1: string;
+  city: string;
+  state: string;
+  pincode: string;
+}
+
 export type IntentType =
   | 'SEARCH_PRODUCTS'
   | 'RECOMMEND'
@@ -121,9 +132,13 @@ export type IntentType =
   | 'ADD_TO_CART'
   | 'REMOVE_FROM_CART'
   | 'UPDATE_QUANTITY'
+  | 'CLEAR_CART'
   | 'COMPARE'
   | 'SHOW_CART'
   | 'CHECKOUT'
+  | 'FILL_CHECKOUT'
+  | 'NAVIGATE'
+  | 'SIGN_IN_GOOGLE'
   | 'CONFIRM'
   | 'DENY'
   | 'TRACK_ORDER'
@@ -157,7 +172,14 @@ export interface ParsedIntent {
     occasion?: string;
     reason?: string;
     lang?: LangCode;
+    targetRoute?: RouteName;
+    checkoutFields?: Partial<CheckoutDraft>;
+    payMethod?: PaymentMethod;
+    upiId?: string;
+    useSavedAddress?: boolean;
+    submitPayment?: boolean;
   };
+  followUpActions?: ParsedIntent[];
 }
 
 export interface ActionChip {
