@@ -23,7 +23,7 @@ export const CompareScreen: React.FC = () => {
   if (!comparison) return null;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 min-w-0 w-full">
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
         <div>
           <h1 className="font-display text-2xl sm:text-3xl font-semibold text-[#F5F5F5]">
@@ -63,15 +63,18 @@ export const CompareScreen: React.FC = () => {
       </div>
 
       {/* Product Selector & Comparison Table */}
-      <div className="rounded-[20px] vc-glass overflow-x-auto">
-        <table className="w-full min-w-[600px] text-left border-collapse">
+      <p className="text-xs text-[#9A9A9A] sm:hidden">
+        Swipe table horizontally to compare all columns →
+      </p>
+      <div className="w-full max-w-full rounded-[20px] vc-glass overflow-x-auto">
+        <table className="w-full min-w-[560px] text-left border-collapse">
           <thead>
             <tr className="border-b border-white/10">
-              <th className="p-5 text-xs font-medium text-[#9A9A9A] w-44 align-top">
+              <th className="p-3.5 sm:p-5 text-xs font-medium text-[#9A9A9A] w-32 sm:w-44 align-top">
                 Specification
               </th>
               {comparison.products.map((prod, idx) => (
-                <th key={prod.id} className="p-5 align-top">
+                <th key={prod.id} className="p-3.5 sm:p-5 align-top">
                   <div className="space-y-3">
                     <label className="block">
                       <span className="sr-only">Select product {idx + 1}</span>

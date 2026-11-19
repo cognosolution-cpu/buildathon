@@ -59,7 +59,7 @@ export const OrdersScreen: React.FC = () => {
           const isReturned = order.status === 'returned';
 
           return (
-            <article key={order.id} className="rounded-[20px] vc-glass p-6 space-y-6">
+            <article key={order.id} className="rounded-[20px] vc-glass p-5 sm:p-6 space-y-6 min-w-0">
               {/* Order Header */}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-white/10">
                 <div>
@@ -202,9 +202,9 @@ export const OrdersScreen: React.FC = () => {
               {/* Event Log */}
               <div className="pt-2 space-y-1.5">
                 {order.events.map((ev) => (
-                  <div key={ev.id} className="flex items-center justify-between text-xs text-[#9A9A9A]">
-                    <span>{ev.note}</span>
-                    <span className="font-mono-num tabular-nums">
+                  <div key={ev.id} className="flex flex-wrap items-center justify-between gap-2 text-xs text-[#9A9A9A]">
+                    <span className="min-w-0">{ev.note}</span>
+                    <span className="font-mono-num tabular-nums shrink-0">
                       {new Date(ev.timestamp).toLocaleTimeString('en-IN', {
                         hour: '2-digit',
                         minute: '2-digit',

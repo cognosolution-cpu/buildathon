@@ -4,8 +4,12 @@ import type { Request, Response } from 'express';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
+  handleAgoraStart,
+  handleAgoraStop,
+  handleAgoraToken,
   handleCreateRazorpayOrder,
   handleHealth,
+  handleMurfTts,
   handleNlu,
   handleVerifyRazorpay,
 } from './server/handlers';
@@ -20,6 +24,30 @@ async function startServer() {
 
   app.get('/api/health', (_req: Request, res: Response) => {
     const result = handleHealth();
+    res.status(result.status).json(result.data);
+  });
+
+  app.post('/api/agora/token', (req: Request, res: Response) => {
+    const result = handleAgoraToken(req.body ?? {});
+    res.status(result.status).json(result.data);
+  });
+
+  app.post('/api/agora/start', async (req: Request, res: Response) => {
+    const result = await handleAgoraStart(req.body ?? {});
+    res.status(result.status).json(result.data);
+  });
+
+  app.post('/api/agora/stop', async (req: Request, res: Response) => {
+    const result = await handleAgoraStop(req.body ?? {});
+    res.status(result.status).json(result.data);
+  });
+
+  app.post('/api/tts/murf', async (req: Request, res: Response) => {
+    const result = await handleMurfTts(req.body ?? {});
+    if (result.binary) {
+      res.status(result.status).setHeader('Content-Type', result.contentType ?? 'audio/mpeg').send(result.binary);
+      return;
+    }
     res.status(result.status).json(result.data);
   });
 

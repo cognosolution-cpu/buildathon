@@ -27,10 +27,12 @@
 @layer base {
   html,
   body {
+    width: 100%;
+    max-width: 100%;
     background-color: var(--bg-base);
     color: var(--text-primary);
     font-family: var(--font-body);
-    overflow-x: hidden;
+    overflow-x: clip;
   }
 
   h1,
@@ -100,7 +102,8 @@
     0 12px 44px rgba(255, 106, 0, 0.55);
 }
 
-.vc-orb[data-state="thinking"] {
+.vc-orb[data-state="thinking"],
+.vc-orb[data-state="connecting"] {
   background: radial-gradient(circle at 35% 30%, #ffd27d 0%, #ff8a1f 55%, #b84200 100%);
   animation: orb-think 0.9s linear infinite;
 }

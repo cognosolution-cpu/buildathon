@@ -40,9 +40,9 @@ export default function App() {
   return (
     <VibeCartProvider>
       <div className="vc-canvas-bg" aria-hidden="true" />
-      <div className="min-h-screen flex flex-col">
+      <div className="min-h-screen w-full flex flex-col overflow-x-clip">
         <Header />
-        <main className="flex-1 w-full max-w-[1280px] mx-auto px-4 md:px-8 pt-6 pb-28 md:pb-16">
+        <main className="flex-1 min-w-0 w-full max-w-[1280px] mx-auto px-4 md:px-8 pt-6 pb-28 md:pb-16">
           <ScreenRouter />
         </main>
         <ActionChips />

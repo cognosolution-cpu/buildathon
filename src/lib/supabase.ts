@@ -112,7 +112,7 @@ export async function searchSupabaseProducts(params: {
     max_price: params.maxPrice ?? null,
     min_price: null,
     cat: params.category && params.category !== 'all' ? params.category : null,
-    lim: 12,
+    lim: 24,
   });
   if (error || !Array.isArray(data)) return null;
   return data.map((row) => mapProductRow(row as Record<string, unknown>));

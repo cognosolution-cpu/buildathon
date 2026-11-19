@@ -164,12 +164,12 @@ export const CheckoutScreen: React.FC = () => {
         </p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-start">
         {/* Address Form */}
         <form
           onSubmit={handleContinueToPay}
           noValidate
-          className="lg:col-span-7 rounded-[20px] vc-glass p-6 sm:p-8 space-y-5"
+          className="lg:col-span-7 min-w-0 rounded-[20px] vc-glass p-5 sm:p-8 space-y-5"
         >
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 className="font-display text-lg font-semibold text-[#F5F5F5]">
@@ -302,7 +302,7 @@ export const CheckoutScreen: React.FC = () => {
         </form>
 
         {/* Summary Sidebar */}
-        <aside className="lg:col-span-5 rounded-[20px] vc-glass p-6 space-y-4">
+        <aside className="lg:col-span-5 min-w-0 rounded-[20px] vc-glass p-5 sm:p-6 space-y-4">
           <h2 className="font-display text-lg font-semibold text-[#F5F5F5]">
             Items in Order
           </h2>
@@ -369,7 +369,7 @@ export const CheckoutScreen: React.FC = () => {
           aria-label="Razorpay Test Payment Gateway"
           className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4"
         >
-          <div className="w-full max-w-md rounded-[24px] bg-[#111111] border border-white/15 overflow-hidden shadow-2xl">
+          <div className="w-full max-w-md max-h-[90dvh] overflow-y-auto rounded-[24px] bg-[#111111] border border-white/15 shadow-2xl">
             <div className="bg-gradient-to-r from-[#FF6A00] to-[#E34A00] p-5 flex items-center justify-between text-[#050505]">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wide opacity-80">

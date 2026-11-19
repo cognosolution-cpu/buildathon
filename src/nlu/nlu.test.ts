@@ -119,3 +119,15 @@ test('validateParsedIntent sanitizes LLM outputs and rejects invalid intents/qua
   assert.equal(invalid.parsed.entities.maxPrice, undefined);
   assert.equal(invalid.parsed.entities.quantity, 1);
 });
+
+import { resolveMurfVoice } from '../voice/murfVoices';
+
+test('resolveMurfVoice maps Indian languages and genders to Murf Falcon 2 voices', () => {
+  assert.equal(resolveMurfVoice('en-IN', 'female').voiceId, 'Anisha');
+  assert.equal(resolveMurfVoice('en-IN', 'male').voiceId, 'Abhinav');
+  assert.equal(resolveMurfVoice('hi-IN', 'female').voiceId, 'Pooja');
+  assert.equal(resolveMurfVoice('hi-IN', 'male').voiceId, 'Prathamesh');
+  assert.equal(resolveMurfVoice('ta-IN', 'male').voiceId, 'Karthikeyan');
+  assert.equal(resolveMurfVoice('te-IN', 'male').voiceId, 'Samar');
+  assert.equal(resolveMurfVoice('kn-IN', 'male').voiceId, 'Harman');
+});

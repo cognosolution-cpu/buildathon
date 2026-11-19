@@ -1,4 +1,4 @@
-import type { LangCode } from '../types';
+import type { LangCode, VoiceGender } from '../types';
 
 interface SpeechRecognitionAlternative {
   transcript: string;
@@ -40,9 +40,12 @@ function getSpeechRecognitionCtor(): SpeechRecognitionCtor | null {
 export const isSttSupported = (): boolean => getSpeechRecognitionCtor() !== null;
 
 export const isTtsSupported = (): boolean =>
-  typeof window !== 'undefined' && 'speechSynthesis' in window;
+  typeof window !== 'undefined' && ('Audio' in window || 'speechSynthesis' in window);
 
 let cachedVoices: SpeechSynthesisVoice[] = [];
+let activeAudio: HTMLAudioElement | null = null;
+let activeAudioUrl: string | null = null;
+let activeAbort: AbortController | null = null;
 
 if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
   const loadVoices = () => {
@@ -52,8 +55,33 @@ if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
   window.speechSynthesis.addEventListener?.('voiceschanged', loadVoices);
 }
 
-export function speakReply(text: string, lang: LangCode): void {
-  if (!isTtsSupported() || !text) return;
+export function stopSpeaking(): void {
+  activeAbort?.abort();
+  activeAbort = null;
+  if (activeAudio) {
+    try {
+      activeAudio.pause();
+      activeAudio.src = '';
+    } catch {
+      // Ignore cleanup errors
+    }
+    activeAudio = null;
+  }
+  if (activeAudioUrl) {
+    URL.revokeObjectURL(activeAudioUrl);
+    activeAudioUrl = null;
+  }
+  if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+    try {
+      window.speechSynthesis.cancel();
+    } catch {
+      // Ignore
+    }
+  }
+}
+
+function speakBrowserFallback(text: string, lang: LangCode): void {
+  if (typeof window === 'undefined' || !('speechSynthesis' in window) || !text) return;
   try {
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = lang;
@@ -66,7 +94,55 @@ export function speakReply(text: string, lang: LangCode): void {
     window.speechSynthesis.cancel();
     window.speechSynthesis.speak(utterance);
   } catch {
-    // Ignore synthesis errors in headless or muted environments
+    // Ignore synthesis errors in muted environments
+  }
+}
+
+/**
+ * Speaks assistant replies using Murf AI Falcon 2 Indian voices via /api/tts/murf,
+ * falling back to Web Speech API only if the network/API is unavailable.
+ */
+export async function speakReply(
+  text: string,
+  lang: LangCode,
+  voiceGender: VoiceGender = 'female'
+): Promise<void> {
+  if (typeof window === 'undefined' || !text.trim()) return;
+  stopSpeaking();
+
+  const controller = new AbortController();
+  activeAbort = controller;
+
+  try {
+    const res = await fetch('/api/tts/murf', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, lang, voiceGender }),
+      signal: controller.signal,
+    });
+
+    if (!res.ok) {
+      throw new Error(`Murf TTS HTTP ${res.status}`);
+    }
+
+    const blob = await res.blob();
+    if (controller.signal.aborted || blob.size === 0) return;
+
+    const url = URL.createObjectURL(blob);
+    activeAudioUrl = url;
+    const audio = new Audio(url);
+    activeAudio = audio;
+    audio.onended = () => {
+      if (activeAudioUrl === url) {
+        URL.revokeObjectURL(url);
+        activeAudioUrl = null;
+      }
+      if (activeAudio === audio) activeAudio = null;
+    };
+    await audio.play();
+  } catch (err) {
+    if ((err as { name?: string })?.name === 'AbortError') return;
+    speakBrowserFallback(text, lang);
   }
 }
 

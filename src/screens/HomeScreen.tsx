@@ -28,7 +28,7 @@ export const HomeScreen: React.FC = () => {
     <div className="space-y-12">
       {/* Storefront Hero Split */}
       <section className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-stretch">
-        <div className="lg:col-span-6 flex flex-col justify-center rounded-[20px] vc-glass p-6 sm:p-8 lg:p-10">
+        <div className="lg:col-span-6 min-w-0 flex flex-col justify-center rounded-[20px] vc-glass p-5 sm:p-8 lg:p-10">
           <p className="text-xs font-medium text-[#FFA040] mb-3 tracking-wide">
             Voice-First Acoustic & Gear Store
           </p>
@@ -88,7 +88,7 @@ export const HomeScreen: React.FC = () => {
         </div>
 
         {/* Hero 16:9 Studio Hardware Composition */}
-        <div className="lg:col-span-6 relative rounded-[20px] overflow-hidden border border-white/10 bg-[#0B0B0B] min-h-[260px] lg:min-h-[420px]">
+        <div className="lg:col-span-6 min-w-0 relative rounded-[20px] overflow-hidden border border-white/10 bg-[#0B0B0B] min-h-[280px] sm:min-h-[320px] lg:min-h-[420px]">
           <img
             src={HERO_IMAGE}
             alt="VibeCart studio headphones, obsidian earbuds, and smart acoustic speaker"

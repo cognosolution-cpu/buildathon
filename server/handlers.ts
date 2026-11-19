@@ -1,18 +1,36 @@
 import crypto from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { GoogleGenAI, ThinkingLevel, Type } from '@google/genai';
+import agoraTokenPkg from 'agora-token';
 import { CATALOG } from '../src/data/catalog';
+import type { LangCode, VoiceGender } from '../src/types';
+import { resolveMurfVoice } from '../src/voice/murfVoices';
+
+const { RtcTokenBuilder, RtcRole } = agoraTokenPkg;
 
 export interface HandlerResult {
   status: number;
-  data: Record<string, unknown>;
+  data?: Record<string, unknown>;
+  binary?: Buffer;
+  contentType?: string;
+}
+
+function getAgoraCredentials() {
+  const appId = (process.env.AGORA_APP_ID || process.env.VITE_AGORA_APP_ID || '').trim();
+  const appCert = (process.env.AGORA_APP_CERTIFICATE || '').trim();
+  const murfKey = (process.env.MURF_API_KEY || '').trim();
+  return { appId, appCert, murfKey };
+}
+
+function getGeminiApiKey(): string {
+  const apiKey = (process.env.GEMINI_API_KEY || '').trim();
+  if (!apiKey || apiKey === 'MY_GEMINI_API_KEY') return '';
+  return apiKey;
 }
 
 function getGeminiClient(): GoogleGenAI | null {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey || apiKey === 'MY_GEMINI_API_KEY' || apiKey.trim() === '') {
-    return null;
-  }
+  const apiKey = getGeminiApiKey();
+  if (!apiKey) return null;
   return new GoogleGenAI({
     apiKey,
     httpOptions: {
@@ -21,6 +39,20 @@ function getGeminiClient(): GoogleGenAI | null {
       },
     },
   });
+}
+
+function buildAgoraRtcToken(appId: string, appCert: string, channelName: string, uid: number, ttlSeconds = 3600): string {
+  const now = Math.floor(Date.now() / 1000);
+  const expireAt = now + ttlSeconds;
+  return RtcTokenBuilder.buildTokenWithUid(
+    appId,
+    appCert,
+    channelName,
+    uid,
+    RtcRole.PUBLISHER,
+    expireAt,
+    expireAt
+  );
 }
 
 const NLU_RESPONSE_SCHEMA = {
@@ -96,6 +128,10 @@ export function handleHealth(): HandlerResult {
     (process.env.RAZORPAY_KEY_ID || process.env.VITE_RAZORPAY_KEY_ID) &&
       process.env.RAZORPAY_KEY_SECRET
   );
+  const { appId, appCert, murfKey } = getAgoraCredentials();
+  const agoraConfigured = Boolean(appId && appCert);
+  const murfConfigured = Boolean(murfKey);
+
   return {
     status: 200,
     data: {
@@ -104,8 +140,285 @@ export function handleHealth(): HandlerResult {
       supabaseConfigured,
       razorpayConfigured,
       razorpayServerReady,
+      agoraConfigured,
+      murfConfigured,
     },
   };
+}
+
+export function handleAgoraToken(body: Record<string, unknown>): HandlerResult {
+  const { appId, appCert } = getAgoraCredentials();
+  if (!appId || !appCert) {
+    return {
+      status: 503,
+      data: { error: 'AGORA_APP_ID and AGORA_APP_CERTIFICATE are not configured.' },
+    };
+  }
+
+  const rawChannel = typeof body?.channelName === 'string' ? body.channelName.trim() : '';
+  const channelName =
+    rawChannel || `vibecart_${Date.now().toString(36)}_${Math.floor(100 + Math.random() * 899)}`;
+  const rawUid = Number(body?.uid);
+  const uid =
+    Number.isFinite(rawUid) && rawUid > 0
+      ? Math.floor(rawUid)
+      : Math.floor(10000 + Math.random() * 80000);
+
+  const ttlSeconds = 3600;
+  const token = buildAgoraRtcToken(appId, appCert, channelName, uid, ttlSeconds);
+
+  return {
+    status: 200,
+    data: {
+      appId,
+      channelName,
+      uid,
+      token,
+      expiresAt: Math.floor(Date.now() / 1000) + ttlSeconds,
+    },
+  };
+}
+
+export async function handleAgoraStart(body: Record<string, unknown>): Promise<HandlerResult> {
+  const { appId, appCert, murfKey } = getAgoraCredentials();
+  const geminiKey = getGeminiApiKey();
+
+  if (!appId || !appCert) {
+    return {
+      status: 503,
+      data: { error: 'Agora App ID and App Certificate are not configured on the server.' },
+    };
+  }
+  if (!murfKey) {
+    return {
+      status: 503,
+      data: { error: 'MURF_API_KEY is not configured on the server.' },
+    };
+  }
+  if (!geminiKey) {
+    return {
+      status: 503,
+      data: { error: 'GEMINI_API_KEY is required as the LLM brain for the Agora agent.' },
+    };
+  }
+
+  const channelName = typeof body?.channelName === 'string' ? body.channelName.trim() : '';
+  if (!channelName) {
+    return { status: 400, data: { error: 'channelName is required.' } };
+  }
+
+  const lang = (typeof body?.lang === 'string' ? body.lang : 'en-IN') as LangCode;
+  const voiceGender = (body?.voiceGender === 'male' ? 'male' : 'female') as VoiceGender;
+  const voice = resolveMurfVoice(lang, voiceGender);
+
+  const userUid = Number.isFinite(Number(body?.userUid)) ? String(Number(body.userUid)) : '*';
+  const agentUid = 999999;
+  const restToken = buildAgoraRtcToken(appId, appCert, channelName, 0, 3600);
+  const agentToken = buildAgoraRtcToken(appId, appCert, channelName, agentUid, 3600);
+
+  const context = (body?.context ?? {}) as Record<string, unknown>;
+  const catalogSummary = CATALOG.map(
+    (p, idx) =>
+      `${idx + 1}. ${p.title} (${p.categoryLabel}, ₹${p.price}, rating ${p.rating}, ${Object.entries(p.specs)
+        .slice(0, 2)
+        .map(([k, v]) => `${k}: ${v}`)
+        .join(', ')})`
+  ).join('\n');
+
+  const greetingByLang: Record<LangCode, string> = {
+    'en-IN': 'Namaste! Welcome to VibeCart. Tell me what gear or budget you are looking for today.',
+    'hi-IN': 'नमस्ते! वाइबकार्ट में आपका स्वागत है। बताइए आज आप क्या खरीदना चाहते हैं?',
+    'kn-IN': 'ನಮಸ್ಕಾರ! ವೈಬ್‌ಕಾರ್ಟ್‌ಗೆ ಸ್ವಾಗತ. ಇಂದು ನಿಮಗೆ ಯಾವ ಗ್ಯಾಜೆಟ್ ಅಥವಾ ಬಜೆಟ್ ಬೇಕು ಹೇಳಿ?',
+    'ta-IN': 'வணக்கம்! வைப்கார்ட்டிற்கு வரவேற்கிறோம். இன்று என்ன பொருள் வாங்க விரும்புகிறீர்கள்?',
+    'te-IN': 'నమస్కారం! వైబ్‌కార్ట్‌కు స్వాగతం. ఈరోజు మీరు ఏం కొనాలనుకుంటున్నారు?',
+  };
+
+  const systemPrompt = `You are VibeCart's live conversational shopping assistant powered by Agora Voice AI and Murf Falcon 2.
+Speak naturally and concisely (under 25 words per reply) in the shopper's language (${lang}). Never use markdown bullets or emojis in spoken text.
+Store catalog (prices in Indian Rupees):
+${catalogSummary}
+Current context: screen=${String(context.screen ?? 'home')}, cartCount=${Number(context.cartCount ?? 0)}.
+Help shoppers discover products, compare two items, add numbered items to cart, check cart/checkout, or track/return orders.`;
+
+  try {
+    const joinRes = await fetch(
+      `https://api.agora.io/api/conversational-ai-agent/v2/projects/${appId}/join`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `agora token="${restToken}"`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: `vibecart_${channelName}_${Date.now().toString(36)}`,
+          properties: {
+            channel: channelName,
+            token: agentToken,
+            agent_rtc_uid: String(agentUid),
+            remote_rtc_uids: [userUid],
+            idle_timeout: 120,
+            asr: {
+              vendor: 'ares',
+              language: voice.asrLanguage,
+            },
+            llm: {
+              url: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',
+              api_key: geminiKey,
+              params: {
+                model: 'gemini-2.5-flash',
+              },
+              system_messages: [{ role: 'system', content: systemPrompt }],
+              greeting_message: greetingByLang[lang] ?? greetingByLang['en-IN'],
+              failure_message: 'Sorry, I missed that. Could you repeat your shopping request?',
+              max_history: 16,
+            },
+            tts: {
+              vendor: 'murf',
+              params: {
+                api_key: murfKey,
+                base_url: 'wss://global.api.murf.ai/v1/speech/stream-input',
+                voice_id: voice.voiceId,
+                locale: voice.locale,
+                model: 'FALCON',
+                sample_rate: 24000,
+                rate: 0,
+                pitch: 0,
+              },
+            },
+          },
+        }),
+      }
+    );
+
+    const payload = (await joinRes.json()) as {
+      agent_id?: string;
+      status?: string;
+      detail?: string;
+      message?: string;
+    };
+
+    if (!joinRes.ok || !payload.agent_id) {
+      return {
+        status: 502,
+        data: {
+          error: payload.detail ?? payload.message ?? 'Failed to start Agora Conversational AI agent.',
+        },
+      };
+    }
+
+    return {
+      status: 200,
+      data: {
+        agentId: payload.agent_id,
+        status: payload.status ?? 'RUNNING',
+        channelName,
+        agentUid,
+        voiceId: voice.voiceId,
+        displayName: voice.displayName,
+        locale: voice.locale,
+      },
+    };
+  } catch (err) {
+    return {
+      status: 502,
+      data: {
+        error: err instanceof Error ? err.message : 'Unable to reach Agora Conversational AI API.',
+      },
+    };
+  }
+}
+
+export async function handleAgoraStop(body: Record<string, unknown>): Promise<HandlerResult> {
+  const { appId, appCert } = getAgoraCredentials();
+  const agentId = typeof body?.agentId === 'string' ? body.agentId.trim() : '';
+  const channelName =
+    typeof body?.channelName === 'string' && body.channelName.trim()
+      ? body.channelName.trim()
+      : 'vibecart-leave';
+
+  if (!appId || !appCert) {
+    return { status: 503, data: { error: 'Agora credentials not configured.' } };
+  }
+  if (!agentId) {
+    return { status: 400, data: { error: 'agentId is required.' } };
+  }
+
+  try {
+    const restToken = buildAgoraRtcToken(appId, appCert, channelName, 0, 600);
+    const leaveRes = await fetch(
+      `https://api.agora.io/api/conversational-ai-agent/v2/projects/${appId}/agents/${encodeURIComponent(agentId)}/leave`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `agora token="${restToken}"`,
+        },
+      }
+    );
+    return {
+      status: leaveRes.ok ? 200 : 502,
+      data: { ok: leaveRes.ok, agentId },
+    };
+  } catch (err) {
+    return {
+      status: 502,
+      data: { error: err instanceof Error ? err.message : 'Failed to stop Agora agent.' },
+    };
+  }
+}
+
+export async function handleMurfTts(body: Record<string, unknown>): Promise<HandlerResult> {
+  const { murfKey } = getAgoraCredentials();
+  if (!murfKey) {
+    return { status: 503, data: { error: 'MURF_API_KEY is not configured.' } };
+  }
+
+  const text = typeof body?.text === 'string' ? body.text.trim() : '';
+  if (!text) {
+    return { status: 400, data: { error: 'text is required.' } };
+  }
+
+  const lang = (typeof body?.lang === 'string' ? body.lang : 'en-IN') as LangCode;
+  const voiceGender = (body?.voiceGender === 'male' ? 'male' : 'female') as VoiceGender;
+  const voice = resolveMurfVoice(lang, voiceGender);
+
+  const payload = JSON.stringify({
+    text: text.slice(0, 600),
+    voiceId: voice.voiceId,
+    model: 'FALCON',
+    locale: voice.locale,
+    format: 'MP3',
+    sampleRate: 24000,
+  });
+
+  const endpoints = [
+    'https://in.api.murf.ai/v1/speech/stream',
+    'https://global.api.murf.ai/v1/speech/stream',
+  ];
+
+  for (const url of endpoints) {
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'api-key': murfKey,
+          'Content-Type': 'application/json',
+        },
+        body: payload,
+      });
+      if (res.ok) {
+        const arrBuf = await res.arrayBuffer();
+        return {
+          status: 200,
+          binary: Buffer.from(arrBuf),
+          contentType: 'audio/mpeg',
+        };
+      }
+    } catch {
+      // Try next regional Murf endpoint
+    }
+  }
+
+  return { status: 502, data: { error: 'Failed to synthesize audio via Murf Falcon 2.' } };
 }
 
 export async function handleCreateRazorpayOrder(
@@ -317,8 +630,14 @@ export async function runVercelHandler(
     const body = method === 'POST' ? await readJsonBody(req) : {};
     const result = await fn(body);
     res.statusCode = result.status;
+    if (result.binary) {
+      res.setHeader('Content-Type', result.contentType ?? 'application/octet-stream');
+      res.setHeader('Cache-Control', 'no-store');
+      res.end(result.binary);
+      return;
+    }
     res.setHeader('Content-Type', 'application/json');
-    res.end(JSON.stringify(result.data));
+    res.end(JSON.stringify(result.data ?? {}));
   } catch (err) {
     res.statusCode = 400;
     res.setHeader('Content-Type', 'application/json');

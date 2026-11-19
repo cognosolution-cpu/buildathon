@@ -12,7 +12,8 @@ import {
 import { LANGUAGES, t } from '../nlu/i18n';
 import { understand } from '../nlu/nluRouter';
 import { buildComparison } from '../nlu/compareLogic';
-import { speakReply } from '../voice/speech';
+import { speakReply, stopSpeaking } from '../voice/speech';
+import { AgoraVoiceSession } from '../voice/agoraVoice';
 import type {
   ActionChip,
   Address,
@@ -23,68 +24,15 @@ import type {
   Product,
   ProductRef,
   RouteName,
+  VoiceGender,
   VoiceStatus,
 } from '../types';
 
 const STORAGE_KEY = 'vibecart_state_v1';
 
-const DEFAULT_ADDRESSES: Address[] = [
-  {
-    id: 'addr-default-1',
-    name: 'Aarav Sharma',
-    phone: '9876543210',
-    line1: '42 Indiranagar 100 Feet Road, HAL 2nd Stage',
-    city: 'Bengaluru',
-    state: 'Karnataka',
-    pincode: '560038',
-    isDefault: true,
-  },
-];
-
-const INITIAL_DEMO_ORDER: Order = {
-  id: 'VC-1042',
-  razorpayOrderId: 'order_demo_1042',
-  razorpayPaymentId: 'pay_demo_1042',
-  address: DEFAULT_ADDRESSES[0],
-  items: [
-    {
-      productId: 'vc-earbuds-air',
-      title: 'PulseBuds Air ANC',
-      price: 1799,
-      quantity: 1,
-      variantName: 'Obsidian Copper',
-      imageUrl: '/src/assets/images/product_earbuds_obsidian_1795037379103.jpg',
-    },
-  ],
-  subtotal: 1799,
-  shipping: 0,
-  total: 1799,
-  status: 'shipped',
-  createdAt: new Date(Date.now() - 1000 * 60 * 60 * 18).toISOString(),
-  events: [
-    {
-      id: 'ev-1',
-      status: 'paid',
-      note: 'Payment verified via Razorpay Test Mode',
-      timestamp: new Date(Date.now() - 1000 * 60 * 60 * 18).toISOString(),
-    },
-    {
-      id: 'ev-2',
-      status: 'packed',
-      note: 'Packed at Bengaluru Audio Hub',
-      timestamp: new Date(Date.now() - 1000 * 60 * 60 * 10).toISOString(),
-    },
-    {
-      id: 'ev-3',
-      status: 'shipped',
-      note: 'Dispatched with Express Courier',
-      timestamp: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString(),
-    },
-  ],
-};
-
 interface PersistedState {
   lang: LangCode;
+  voiceGender: VoiceGender;
   cart: CartItem[];
   orders: Order[];
   addresses: Address[];
@@ -97,14 +45,18 @@ function loadPersisted(): PersistedState {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw) as Partial<PersistedState>;
+      const cleanOrders = Array.isArray(parsed.orders)
+        ? parsed.orders.filter((o) => o.razorpayOrderId !== 'order_demo_1042')
+        : [];
+      const cleanAddresses = Array.isArray(parsed.addresses)
+        ? parsed.addresses.filter((a) => a.id !== 'addr-default-1')
+        : [];
       return {
         lang: parsed.lang ?? 'en-IN',
+        voiceGender: parsed.voiceGender === 'male' ? 'male' : 'female',
         cart: Array.isArray(parsed.cart) ? parsed.cart : [],
-        orders: Array.isArray(parsed.orders) && parsed.orders.length > 0 ? parsed.orders : [INITIAL_DEMO_ORDER],
-        addresses:
-          Array.isArray(parsed.addresses) && parsed.addresses.length > 0
-            ? parsed.addresses
-            : DEFAULT_ADDRESSES,
+        orders: cleanOrders,
+        addresses: cleanAddresses,
         simpleView: Boolean(parsed.simpleView),
         compareIds:
           Array.isArray(parsed.compareIds) && parsed.compareIds.length >= 2
@@ -117,9 +69,10 @@ function loadPersisted(): PersistedState {
   }
   return {
     lang: 'en-IN',
+    voiceGender: 'female',
     cart: [],
-    orders: [INITIAL_DEMO_ORDER],
-    addresses: DEFAULT_ADDRESSES,
+    orders: [],
+    addresses: [],
     simpleView: false,
     compareIds: [CATALOG[0].id, CATALOG[1].id],
   };
@@ -153,6 +106,7 @@ interface VibeCartContextValue {
   authUserId: string | null;
   authMode: AuthMode;
   authEmail: string | null;
+  signInWithGoogle: () => Promise<{ ok: boolean; message: string }>;
   signInWithMagicLink: (email: string) => Promise<{ ok: boolean; message: string }>;
   signOutSupabase: () => Promise<void>;
   refreshOrders: () => Promise<void>;
@@ -161,6 +115,8 @@ interface VibeCartContextValue {
   navigate: (route: RouteName, productId?: string) => void;
   lang: LangCode;
   setLang: (lang: LangCode) => void;
+  voiceGender: VoiceGender;
+  setVoiceGender: (gender: VoiceGender) => void;
   simpleView: boolean;
   setSimpleView: (simple: boolean) => void;
   cart: CartItem[];
@@ -192,6 +148,12 @@ interface VibeCartContextValue {
   assistantReply: string;
   voiceOverlayOpen: boolean;
   setVoiceOverlayOpen: (open: boolean) => void;
+  agoraActive: boolean;
+  agoraMuted: boolean;
+  agoraVoiceName: string;
+  startAgoraVoice: () => Promise<boolean>;
+  stopAgoraVoice: () => Promise<void>;
+  toggleAgoraMute: () => Promise<void>;
   chips: ActionChip[];
   pushChip: (chip: Omit<ActionChip, 'id'>) => void;
   dismissChip: (id: string) => void;
@@ -225,6 +187,7 @@ export const VibeCartProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     initialRoute.productId ?? CATALOG[0].id
   );
   const [lang, setLangState] = useState<LangCode>(initialPersisted.lang);
+  const [voiceGender, setVoiceGender] = useState<VoiceGender>(initialPersisted.voiceGender);
   const [cart, setCart] = useState<CartItem[]>(initialPersisted.cart);
   const [orders, setOrders] = useState<Order[]>(initialPersisted.orders);
   const [addresses, setAddresses] = useState<Address[]>(initialPersisted.addresses);
@@ -242,18 +205,23 @@ export const VibeCartProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [transcript, setTranscript] = useState<string>('');
   const [assistantReply, setAssistantReply] = useState<string>('');
   const [voiceOverlayOpen, setVoiceOverlayOpen] = useState<boolean>(false);
+  const [agoraActive, setAgoraActive] = useState<boolean>(false);
+  const [agoraMuted, setAgoraMuted] = useState<boolean>(false);
+  const [agoraVoiceName, setAgoraVoiceName] = useState<string>('');
   const [chips, setChips] = useState<ActionChip[]>([]);
   const [lastAddedPulse, setLastAddedPulse] = useState<number>(0);
   const [pendingConfirmation, setPendingConfirmation] = useState<{ type: 'CHECKOUT' } | null>(null);
 
   const productsRef = useRef<Product[]>(products);
   productsRef.current = products;
+  const agoraSessionRef = useRef<AgoraVoiceSession | null>(null);
 
   // Persist core user data locally
   useEffect(() => {
     try {
       const payload: PersistedState = {
         lang,
+        voiceGender,
         cart,
         orders,
         addresses,
@@ -264,7 +232,7 @@ export const VibeCartProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     } catch {
       // Ignore quota issues
     }
-  }, [lang, cart, orders, addresses, simpleView, compareIds]);
+  }, [lang, voiceGender, cart, orders, addresses, simpleView, compareIds]);
 
   const dismissChip = useCallback((id: string) => {
     setChips((prev) => prev.filter((c) => c.id !== id));
@@ -295,8 +263,13 @@ export const VibeCartProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const hydrateFromSupabase = async () => {
       const remoteProducts = await fetchSupabaseCatalog();
       if (!cancelled && remoteProducts && remoteProducts.length > 0) {
-        setProducts(remoteProducts);
-        setLastResults(remoteProducts);
+        const byId = new Map(CATALOG.map((p) => [p.id, p]));
+        for (const rp of remoteProducts) {
+          byId.set(rp.id, rp);
+        }
+        const merged = Array.from(byId.values());
+        setProducts(merged);
+        setLastResults(merged);
       }
 
       const userId = await ensureSupabaseSession();
@@ -686,11 +659,55 @@ export const VibeCartProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       };
 
       setOrders((prev) => [newOrder, ...prev]);
-      setCart([]);
+      clearCart();
       pushChip({ type: 'success', text: `Order ${newOrder.id} confirmed` });
+
+      if (isSupabaseConfigured && supabase && authUserId) {
+        (async () => {
+          const { data: insertedOrder } = await supabase
+            .from('orders')
+            .insert({
+              order_code: newOrder.id,
+              user_id: authUserId,
+              address,
+              subtotal,
+              shipping,
+              total: subtotal + shipping,
+              status: 'paid',
+              razorpay_order_id: razorpayOrderId,
+              razorpay_payment_id: paymentId,
+            })
+            .select('id')
+            .maybeSingle();
+
+          if (insertedOrder?.id) {
+            await supabase.from('order_items').insert(
+              orderItems.map((it) => {
+                const prod = productsRef.current.find((p) => p.id === it.productId);
+                return {
+                  order_id: insertedOrder.id,
+                  product_id: prod?.dbUuid ?? null,
+                  product_slug: it.productId,
+                  title: it.title,
+                  price: it.price,
+                  quantity: it.quantity,
+                  variant_name: it.variantName,
+                  image_url: it.imageUrl,
+                };
+              })
+            );
+            await supabase.from('order_events').insert({
+              order_id: insertedOrder.id,
+              status: 'paid',
+              note: 'Payment verified via Razorpay',
+            });
+          }
+        })().catch(() => undefined);
+      }
+
       return newOrder;
     },
-    [cart, pushChip]
+    [authUserId, cart, clearCart, pushChip]
   );
 
   const advanceOrderStatus = useCallback(
@@ -799,6 +816,25 @@ export const VibeCartProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     },
     [authUserId]
   );
+
+  const signInWithGoogle = useCallback(async (): Promise<{ ok: boolean; message: string }> => {
+    if (!isSupabaseConfigured || !supabase) {
+      return { ok: false, message: 'Configure Supabase env vars to enable Google Sign-In.' };
+    }
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: `${window.location.origin}/#/profile`,
+      },
+    });
+    if (error) {
+      const msg = error.message.toLowerCase().includes('provider')
+        ? 'Google Sign-In is not enabled yet in Supabase — use the email magic link below instead.'
+        : error.message;
+      return { ok: false, message: msg };
+    }
+    return { ok: true, message: 'Redirecting to Google Sign-In...' };
+  }, []);
 
   const signInWithMagicLink = useCallback(
     async (email: string): Promise<{ ok: boolean; message: string }> => {
@@ -1090,9 +1126,9 @@ export const VibeCartProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       }
 
       setAssistantReply(reply);
-      setVoiceStatus('speaking');
-      if (options.speak !== false) {
-        speakReply(reply, lang);
+      setVoiceStatus(agoraActive ? 'listening' : 'speaking');
+      if (options.speak !== false && !agoraActive) {
+        speakReply(reply, lang, voiceGender);
       }
       window.setTimeout(() => {
         setVoiceStatus((cur) => (cur === 'speaking' ? 'idle' : cur));
@@ -1100,6 +1136,7 @@ export const VibeCartProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     },
     [
       addToCart,
+      agoraActive,
       cart,
       cartCount,
       cartTotal,
@@ -1115,14 +1152,100 @@ export const VibeCartProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       setLang,
       submitReturn,
       updateQuantity,
+      voiceGender,
     ]
   );
+
+  const runVoiceCommandRef = useRef(runVoiceCommand);
+  runVoiceCommandRef.current = runVoiceCommand;
+
+  const startAgoraVoice = useCallback(async (): Promise<boolean> => {
+    stopSpeaking();
+    if (!agoraSessionRef.current) {
+      agoraSessionRef.current = new AgoraVoiceSession();
+    }
+    const session = agoraSessionRef.current;
+    return session.start(
+      {
+        lang,
+        voiceGender,
+        context: { screen: route, cartCount },
+      },
+      {
+        onConnecting: () => {
+          setVoiceStatus('connecting');
+          setAssistantReply('Connecting to Agora Voice AI & Murf Falcon 2...');
+        },
+        onConnected: ({ voiceDisplayName }) => {
+          setAgoraActive(true);
+          setAgoraMuted(false);
+          setAgoraVoiceName(voiceDisplayName);
+          setVoiceStatus('listening');
+          pushChip({ type: 'info', text: `Agora Voice AI connected (${voiceDisplayName})` });
+        },
+        onUserInterimTranscript: (text) => {
+          setTranscript(text);
+        },
+        onUserFinalTranscript: (text) => {
+          setTranscript(text);
+          runVoiceCommandRef.current(text, { speak: false });
+        },
+        onAssistantTranscript: (text) => {
+          setAssistantReply(text);
+        },
+        onSpeakingChange: (speaking) => {
+          setVoiceStatus(speaking ? 'speaking' : 'listening');
+        },
+        onError: (msg) => {
+          setAgoraActive(false);
+          setAgoraMuted(false);
+          setVoiceStatus('error');
+          setAssistantReply(msg);
+          pushChip({ type: 'error', text: msg });
+          window.setTimeout(() => setVoiceStatus('idle'), 1500);
+        },
+        onDisconnected: () => {
+          setAgoraActive(false);
+          setAgoraMuted(false);
+          setAgoraVoiceName('');
+          setVoiceStatus('idle');
+        },
+      }
+    );
+  }, [cartCount, lang, pushChip, route, voiceGender]);
+
+  const stopAgoraVoice = useCallback(async () => {
+    if (!agoraSessionRef.current) return;
+    await agoraSessionRef.current.stop({
+      onDisconnected: () => {
+        setAgoraActive(false);
+        setAgoraMuted(false);
+        setAgoraVoiceName('');
+        setVoiceStatus('idle');
+      },
+    });
+  }, []);
+
+  const toggleAgoraMute = useCallback(async () => {
+    if (!agoraSessionRef.current) return;
+    const nextMuted = !agoraMuted;
+    await agoraSessionRef.current.setMuted(nextMuted);
+    setAgoraMuted(nextMuted);
+    pushChip({ type: 'info', text: nextMuted ? 'Microphone muted' : 'Microphone unmuted' });
+  }, [agoraMuted, pushChip]);
+
+  useEffect(() => {
+    return () => {
+      agoraSessionRef.current?.stop();
+    };
+  }, []);
 
   const value: VibeCartContextValue = {
     products,
     authUserId,
     authMode,
     authEmail,
+    signInWithGoogle,
     signInWithMagicLink,
     signOutSupabase,
     refreshOrders,
@@ -1131,6 +1254,8 @@ export const VibeCartProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     navigate,
     lang,
     setLang,
+    voiceGender,
+    setVoiceGender,
     simpleView,
     setSimpleView,
     cart,
@@ -1162,6 +1287,12 @@ export const VibeCartProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     assistantReply,
     voiceOverlayOpen,
     setVoiceOverlayOpen,
+    agoraActive,
+    agoraMuted,
+    agoraVoiceName,
+    startAgoraVoice,
+    stopAgoraVoice,
+    toggleAgoraMute,
     chips,
     pushChip,
     dismissChip,

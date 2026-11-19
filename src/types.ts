@@ -110,7 +110,9 @@ export interface Order {
   createdAt: string;
 }
 
-export type VoiceStatus = 'idle' | 'listening' | 'thinking' | 'speaking' | 'error';
+export type VoiceGender = 'female' | 'male';
+
+export type VoiceStatus = 'idle' | 'connecting' | 'listening' | 'thinking' | 'speaking' | 'error';
 
 export type IntentType =
   | 'SEARCH_PRODUCTS'

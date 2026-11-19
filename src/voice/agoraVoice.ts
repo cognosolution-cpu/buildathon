@@ -1,0 +1,289 @@
+import AgoraRTC, {
+  type IAgoraRTCClient,
+  type IMicrophoneAudioTrack,
+  type IRemoteAudioTrack,
+} from 'agora-rtc-sdk-ng';
+import type { LangCode, VoiceGender } from '../types';
+
+AgoraRTC.setLogLevel(3); // Errors only in console
+
+const publicAgoraAppId = (import.meta.env.VITE_AGORA_APP_ID ?? '').trim();
+export const isAgoraConfigured = Boolean(publicAgoraAppId);
+
+export interface AgoraSessionCallbacks {
+  onConnecting?: () => void;
+  onConnected?: (info: { agentId: string; voiceDisplayName: string; channelName: string }) => void;
+  onUserInterimTranscript?: (text: string) => void;
+  onUserFinalTranscript?: (text: string) => void;
+  onAssistantTranscript?: (text: string, isFinal: boolean) => void;
+  onSpeakingChange?: (speaking: boolean) => void;
+  onError?: (message: string) => void;
+  onDisconnected?: () => void;
+}
+
+interface ChunkAccumulator {
+  total: number;
+  parts: Map<number, string>;
+}
+
+interface AgoraStreamPayload {
+  object?: string;
+  text?: string;
+  final?: boolean;
+  is_final?: boolean;
+  turn_id?: string | number;
+  message_id?: string;
+}
+
+export class AgoraVoiceSession {
+  private client: IAgoraRTCClient | null = null;
+  private micTrack: IMicrophoneAudioTrack | null = null;
+  private remoteAudioTrack: IRemoteAudioTrack | null = null;
+  private agentId: string | null = null;
+  private channelName: string | null = null;
+  private muted = false;
+  private active = false;
+  private chunkMap = new Map<string, ChunkAccumulator>();
+  private processedTurnKeys = new Set<string>();
+
+  isActive(): boolean {
+    return this.active;
+  }
+
+  isMuted(): boolean {
+    return this.muted;
+  }
+
+  async setMuted(nextMuted: boolean): Promise<void> {
+    this.muted = nextMuted;
+    if (this.micTrack) {
+      await this.micTrack.setMuted(nextMuted);
+    }
+  }
+
+  async start(
+    params: {
+      lang: LangCode;
+      voiceGender: VoiceGender;
+      context: {
+        screen: string;
+        cartCount: number;
+      };
+    },
+    callbacks: AgoraSessionCallbacks
+  ): Promise<boolean> {
+    if (this.active) {
+      await this.stop();
+    }
+
+    callbacks.onConnecting?.();
+
+    try {
+      // 1. Fetch fresh RTC token from server
+      const tokenRes = await fetch('/api/agora/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      const tokenData = (await tokenRes.json()) as {
+        appId?: string;
+        channelName?: string;
+        uid?: number;
+        token?: string;
+        error?: string;
+      };
+      if (!tokenRes.ok || !tokenData.appId || !tokenData.channelName || !tokenData.token) {
+        throw new Error(tokenData.error ?? 'Failed to fetch Agora RTC token.');
+      }
+
+      this.channelName = tokenData.channelName;
+
+      // 2. Join Agora RTC channel & publish microphone
+      const client = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
+      this.client = client;
+      this.chunkMap.clear();
+      this.processedTurnKeys.clear();
+
+      client.on('user-published', async (user, mediaType) => {
+        if (mediaType !== 'audio') return;
+        await client.subscribe(user, mediaType);
+        if (user.audioTrack) {
+          this.remoteAudioTrack = user.audioTrack;
+          user.audioTrack.play();
+          callbacks.onSpeakingChange?.(true);
+        }
+      });
+
+      client.on('user-unpublished', (_user, mediaType) => {
+        if (mediaType === 'audio') {
+          callbacks.onSpeakingChange?.(false);
+        }
+      });
+
+      client.on('stream-message', (_uid, rawData: Uint8Array) => {
+        this.handleStreamMessage(rawData, callbacks);
+      });
+
+      await client.join(
+        tokenData.appId,
+        tokenData.channelName,
+        tokenData.token,
+        tokenData.uid ?? null
+      );
+
+      const micTrack = await AgoraRTC.createMicrophoneAudioTrack({
+        AEC: true,
+        ANS: true,
+        AGC: true,
+      });
+      this.micTrack = micTrack;
+      this.muted = false;
+      await client.publish([micTrack]);
+
+      // 3. Invite Agora Conversational AI Agent + Murf Falcon 2 TTS into the channel
+      const startRes = await fetch('/api/agora/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          channelName: tokenData.channelName,
+          userUid: tokenData.uid,
+          lang: params.lang,
+          voiceGender: params.voiceGender,
+          context: params.context,
+        }),
+      });
+      const startData = (await startRes.json()) as {
+        agentId?: string;
+        displayName?: string;
+        error?: string;
+      };
+      if (!startRes.ok || !startData.agentId) {
+        throw new Error(startData.error ?? 'Failed to start Agora Conversational AI agent.');
+      }
+
+      this.agentId = startData.agentId;
+      this.active = true;
+      callbacks.onConnected?.({
+        agentId: startData.agentId,
+        voiceDisplayName: startData.displayName ?? 'Murf Falcon 2',
+        channelName: tokenData.channelName,
+      });
+      return true;
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : 'Unable to start Agora voice session.';
+      await this.cleanupLocal();
+      callbacks.onError?.(message);
+      return false;
+    }
+  }
+
+  private handleStreamMessage(rawData: Uint8Array, callbacks: AgoraSessionCallbacks): void {
+    try {
+      const decoded = new TextDecoder().decode(rawData).trim();
+      if (!decoded) return;
+
+      let jsonText = decoded;
+      // Agora Conversational AI often sends chunked base64: messageId|partIndex|totalParts|base64
+      if (!decoded.startsWith('{') && decoded.includes('|')) {
+        const segments = decoded.split('|');
+        if (segments.length >= 4) {
+          const [msgId, partStr, totalStr, ...rest] = segments;
+          const partIdx = Number(partStr);
+          const totalParts = Number(totalStr);
+          const chunkPayload = rest.join('|');
+          if (Number.isFinite(partIdx) && Number.isFinite(totalParts) && totalParts > 0) {
+            let entry = this.chunkMap.get(msgId);
+            if (!entry) {
+              entry = { total: totalParts, parts: new Map() };
+              this.chunkMap.set(msgId, entry);
+            }
+            entry.parts.set(partIdx, chunkPayload);
+            if (entry.parts.size < entry.total) {
+              return;
+            }
+            const combinedBase64 = Array.from({ length: entry.total }, (_, idx) =>
+              entry!.parts.get(idx + 1) ?? entry!.parts.get(idx) ?? ''
+            ).join('');
+            this.chunkMap.delete(msgId);
+            jsonText = atob(combinedBase64);
+          }
+        }
+      }
+
+      const payload = JSON.parse(jsonText) as AgoraStreamPayload;
+      const text = typeof payload.text === 'string' ? payload.text.trim() : '';
+      if (!text) return;
+
+      const isFinal = Boolean(payload.is_final ?? payload.final);
+      if (payload.object === 'user.transcription') {
+        if (!isFinal) {
+          callbacks.onUserInterimTranscript?.(text);
+          return;
+        }
+        const turnKey = `${payload.turn_id ?? payload.message_id ?? text}`;
+        if (this.processedTurnKeys.has(turnKey)) return;
+        this.processedTurnKeys.add(turnKey);
+        if (this.processedTurnKeys.size > 50) {
+          const oldest = this.processedTurnKeys.values().next().value;
+          if (oldest) this.processedTurnKeys.delete(oldest);
+        }
+        callbacks.onUserFinalTranscript?.(text);
+      } else if (payload.object === 'assistant.transcription') {
+        callbacks.onAssistantTranscript?.(text, isFinal);
+      }
+    } catch {
+      // Ignore non-JSON or partial control packets
+    }
+  }
+
+  private async cleanupLocal(): Promise<void> {
+    this.active = false;
+    this.muted = false;
+    if (this.remoteAudioTrack) {
+      try {
+        this.remoteAudioTrack.stop();
+      } catch {
+        // Ignore stop errors
+      }
+      this.remoteAudioTrack = null;
+    }
+    if (this.micTrack) {
+      try {
+        this.micTrack.stop();
+        this.micTrack.close();
+      } catch {
+        // Ignore close errors
+      }
+      this.micTrack = null;
+    }
+    if (this.client) {
+      try {
+        this.client.removeAllListeners();
+        await this.client.leave();
+      } catch {
+        // Ignore leave errors
+      }
+      this.client = null;
+    }
+  }
+
+  async stop(callbacks?: AgoraSessionCallbacks): Promise<void> {
+    const agentId = this.agentId;
+    const channelName = this.channelName;
+    this.agentId = null;
+    this.channelName = null;
+
+    await this.cleanupLocal();
+
+    if (agentId) {
+      fetch('/api/agora/stop', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ agentId, channelName }),
+      }).catch(() => undefined);
+    }
+
+    callbacks?.onDisconnected?.();
+  }
+}

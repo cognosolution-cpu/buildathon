@@ -188,17 +188,25 @@ alter table orders enable row level security;
 drop policy if exists "own orders read" on orders;
 create policy "own orders read" on orders for select
   using (auth.uid() = user_id);
--- Inserts & status updates on orders happen strictly inside Edge Functions via Service Role key.
+drop policy if exists "own orders insert" on orders;
+create policy "own orders insert" on orders for insert
+  with check (auth.uid() = user_id);
 
 alter table order_items enable row level security;
 drop policy if exists "own order items read" on order_items;
 create policy "own order items read" on order_items for select
   using (exists (select 1 from orders o where o.id = order_id and o.user_id = auth.uid()));
+drop policy if exists "own order items insert" on order_items;
+create policy "own order items insert" on order_items for insert
+  with check (exists (select 1 from orders o where o.id = order_id and o.user_id = auth.uid()));
 
 alter table order_events enable row level security;
 drop policy if exists "own order events read" on order_events;
 create policy "own order events read" on order_events for select
   using (exists (select 1 from orders o where o.id = order_id and o.user_id = auth.uid()));
+drop policy if exists "own order events insert" on order_events;
+create policy "own order events insert" on order_events for insert
+  with check (exists (select 1 from orders o where o.id = order_id and o.user_id = auth.uid()));
 
 alter table returns enable row level security;
 drop policy if exists "own returns" on returns;
@@ -214,7 +222,7 @@ create or replace function search_products(
   max_price numeric default null,
   min_price numeric default null,
   cat text default null,
-  lim int default 12
+  lim int default 24
 )
 returns table (
   id uuid,
