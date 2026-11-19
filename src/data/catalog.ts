@@ -1,4 +1,4 @@
-import type { Product } from '../types';
+import type { Product } from '../types.js';
 
 export const HERO_IMAGE = '/src/assets/images/hero_vibecart_acoustic_1795037378526.jpg';
 

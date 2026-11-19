@@ -75,8 +75,25 @@ export async function ensureSupabaseSession(): Promise<string | null> {
   if (data.session?.user?.id) {
     return data.session.user.id;
   }
+  try {
+    if (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('vc_anon_disabled') === '1') {
+      return null;
+    }
+  } catch {
+    // Ignore storage errors
+  }
   const { data: anonData, error } = await supabase.auth.signInAnonymously();
   if (error) {
+    try {
+      if (
+        typeof sessionStorage !== 'undefined' &&
+        error.message.toLowerCase().includes('disabled')
+      ) {
+        sessionStorage.setItem('vc_anon_disabled', '1');
+      }
+    } catch {
+      // Ignore storage errors
+    }
     console.warn('[Supabase] Anonymous sign-in skipped:', error.message);
     return null;
   }

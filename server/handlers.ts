@@ -2,11 +2,13 @@ import crypto from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { GoogleGenAI, ThinkingLevel, Type } from '@google/genai';
 import agoraTokenPkg from 'agora-token';
-import { CATALOG } from '../src/data/catalog';
-import type { LangCode, VoiceGender } from '../src/types';
-import { resolveMurfVoice } from '../src/voice/murfVoices';
+import { CATALOG } from '../src/data/catalog.js';
+import type { LangCode, VoiceGender } from '../src/types.js';
+import { resolveMurfVoice } from '../src/voice/murfVoices.js';
 
-const { RtcTokenBuilder, RtcRole } = agoraTokenPkg;
+const resolvedAgoraPkg =
+  (agoraTokenPkg as unknown as { default?: typeof agoraTokenPkg }).default ?? agoraTokenPkg;
+const { RtcTokenBuilder, RtcRole } = resolvedAgoraPkg;
 
 export interface HandlerResult {
   status: number;

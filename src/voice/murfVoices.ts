@@ -1,4 +1,4 @@
-import type { LangCode, VoiceGender } from '../types';
+import type { LangCode, VoiceGender } from '../types.js';
 
 export interface MurfVoiceSpec {
   voiceId: string;
