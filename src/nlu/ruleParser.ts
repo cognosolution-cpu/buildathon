@@ -90,8 +90,14 @@ function cleanProductName(text: string): string {
 }
 
 function extractCheckoutEntities(raw: string): ParsedIntent['entities'] | null {
+  const wantsSaveAddress =
+    /\b(save\s+(?:this\s+|my\s+)?(?:delivery\s+|shipping\s+)?address|add\s+(?:a\s+|new\s+)?(?:delivery\s+|shipping\s+)?address|store\s+(?:my\s+)?address|save\s+(?:address\s+)?to\s+(?:my\s+)?profile)\b/i.test(
+      raw
+    ) ||
+    (/\bsave\b/i.test(raw) && /\baddress\b/i.test(raw));
+
   const fields: Partial<import('../types').CheckoutDraft> = {};
-  const nameMatch = raw.match(/\b(?:my\s+name\s+is|name\s*(?:is|:)?)\s+([a-zA-Z][a-zA-Z\s]{1,40}?)(?=\s*(?:,|phone|mobile|number|address|street|city|state|pin|pincode|zip|and\b|$))/i);
+  const nameMatch = raw.match(/\b(?:my\s+name\s+is|name\s*(?:is|:)?|for)\s+([a-zA-Z][a-zA-Z\s]{1,40}?)(?=\s*(?:,|phone|mobile|number|address|street|city|state|pin|pincode|zip|and\b|$))/i);
   if (nameMatch?.[1]) fields.name = nameMatch[1].trim();
 
   const phoneMatch = raw.match(/(?:\+91[\s-]?)?\b([6-9]\d{9})\b/);
@@ -100,7 +106,12 @@ function extractCheckoutEntities(raw: string): ParsedIntent['entities'] | null {
   const pinMatch = raw.match(/\b(\d{6})\b/);
   if (pinMatch?.[1]) fields.pincode = pinMatch[1];
 
-  const lineMatch = raw.match(/\b(?:street\s+address|address\s+line(?:\s*1)?|address)\s*(?:is|:)?\s+([^,.\n]{5,90}?)(?=\s*(?:,|city|state|pin|pincode|phone|mobile|and\s+city|$))/i);
+  const lineCandidates = Array.from(
+    raw.matchAll(
+      /\b(?:street\s+address|address\s+line(?:\s*1)?|address)\s*(?:is|as|:)?\s+(?!(?:name|phone|mobile|full\s*name|recipient|city|state|pin|pincode|to\s+(?:my\s+)?profile)\b)([^,.\n]{4,90}?)(?=\s*(?:,|city|state|pin|pincode|phone|mobile|and\s+city|$))/gi
+    )
+  );
+  const lineMatch = lineCandidates[0];
   if (lineMatch?.[1]) fields.line1 = lineMatch[1].trim();
 
   const cityMatch = raw.match(/\bcity\s*(?:is|:)?\s+([a-zA-Z\s]{2,35}?)(?=\s*(?:,|state|pin|pincode|phone|and\s+state|$))/i);
@@ -123,12 +134,14 @@ function extractCheckoutEntities(raw: string): ParsedIntent['entities'] | null {
     Boolean(payMethod) ||
     Boolean(upiMatch) ||
     useSavedAddress ||
-    submitPayment;
+    submitPayment ||
+    wantsSaveAddress;
 
   if (!hasAny) return null;
 
   return {
     checkoutFields: Object.keys(fields).length > 0 ? fields : undefined,
+    saveAddress: wantsSaveAddress || undefined,
     payMethod,
     upiId: upiMatch?.[1],
     useSavedAddress: useSavedAddress || undefined,
@@ -166,9 +179,48 @@ export function ruleParse(transcript: string): ParsedIntent {
     return { intent: 'DENY', entities: {}, confidence: 0.95 };
   }
 
-  // 4. Sign in with Google / Open Sign in / Profile
+  // 4. Sign in with Google
   if (/\b(sign\s*in\s+with\s+google|continue\s+with\s+google|google\s+login|google\s+sign\s*in)\b/i.test(normalized)) {
     return { intent: 'SIGN_IN_GOOGLE', entities: {}, confidence: 0.95 };
+  }
+
+  // 4b. Simple View / 2D Studio Photos vs 3D View toggle
+  if (/\b(simple\s+view|2d\s+(?:studio\s+)?photos?|studio\s+photos?\s+mode)\b/i.test(normalized)) {
+    const turnOff = /\b(off|disable|exit|stop|3d)\b/i.test(normalized);
+    return {
+      intent: 'TOGGLE_SIMPLE_VIEW',
+      entities: { simpleView: !turnOff },
+      confidence: 0.94,
+    };
+  }
+  if (/\b(switch\s+to\s+3d|enable\s+3d|3d\s+view\s+mode|turn\s+on\s+3d)\b/i.test(normalized)) {
+    return {
+      intent: 'TOGGLE_SIMPLE_VIEW',
+      entities: { simpleView: false },
+      confidence: 0.94,
+    };
+  }
+
+  // 4c. Profile / Personal Information update via AI
+  if (
+    /\b(profile|personal\s+info(?:rmation)?|account\s+details|my\s+mobile|my\s+phone)\b/i.test(normalized) &&
+    /\b(update|save|set|change|fill|edit)\b/i.test(normalized) &&
+    !/\baddress|city|state|pincode|pin\b/i.test(normalized)
+  ) {
+    const nameMatch = raw.match(/\b(?:name\s*(?:is|to|as|:)?)\s+([a-zA-Z][a-zA-Z\s]{1,40}?)(?=\s*(?:,|and\b|phone|mobile|number|$))/i);
+    const phoneMatch = raw.match(/(?:\+91[\s-]?)?\b([6-9]\d{9})\b/);
+    if (nameMatch?.[1] || phoneMatch?.[1]) {
+      return {
+        intent: 'UPDATE_PROFILE',
+        entities: {
+          profileFields: {
+            ...(nameMatch?.[1] ? { fullName: nameMatch[1].trim() } : {}),
+            ...(phoneMatch?.[1] ? { phone: phoneMatch[1] } : {}),
+          },
+        },
+        confidence: 0.93,
+      };
+    }
   }
 
   // 5. Clear cart
@@ -203,14 +255,27 @@ export function ruleParse(transcript: string): ParsedIntent {
     };
   }
 
-  // 7. Checkout Form Filling & Payment Controls (e.g. "fill my name Piyush, phone 9876543210, ...")
+  // 7. Save Address OR Checkout Form Filling & Payment Controls
   const checkoutEntities = extractCheckoutEntities(raw);
-  if (checkoutEntities && !wantsAdd) {
-    // If user gave a rich address string without explicit keywords, let Gemini NLU assist if only 1 field was found
+  if (checkoutEntities && (!wantsAdd || checkoutEntities.saveAddress)) {
+    if (checkoutEntities.saveAddress && !wantsCheckout && !checkoutEntities.payMethod && !checkoutEntities.submitPayment) {
+      return {
+        intent: 'SAVE_ADDRESS',
+        entities: checkoutEntities,
+        confidence: 0.93,
+      };
+    }
     const fieldCount = Object.keys(checkoutEntities.checkoutFields ?? {}).length;
     const looksLikeFullAddressSpeech =
-      /\b(fill|enter|set|my|address|checkout|deliver|ship)\b/i.test(t) && raw.split(/\s+/).length >= 6;
-    const conf = looksLikeFullAddressSpeech && fieldCount < 2 && !checkoutEntities.useSavedAddress && !checkoutEntities.payMethod ? 0.6 : 0.92;
+      /\b(fill|enter|set|save|my|address|checkout|deliver|ship)\b/i.test(t) && raw.split(/\s+/).length >= 6;
+    const conf =
+      looksLikeFullAddressSpeech &&
+      fieldCount < 2 &&
+      !checkoutEntities.useSavedAddress &&
+      !checkoutEntities.payMethod &&
+      !checkoutEntities.saveAddress
+        ? 0.6
+        : 0.92;
     return {
       intent: 'FILL_CHECKOUT',
       entities: checkoutEntities,

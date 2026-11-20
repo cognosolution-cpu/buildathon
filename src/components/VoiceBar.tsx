@@ -16,6 +16,7 @@ const QUICK_PROMPTS = [
 
 export const VoiceAssistantShell: React.FC = () => {
   const {
+    route,
     lang,
     voiceGender,
     voiceStatus,
@@ -114,13 +115,15 @@ export const VoiceAssistantShell: React.FC = () => {
 
   return (
     <>
-      {/* Floating Voice Orb trigger: sits above bottom nav on mobile, bottom-right on desktop */}
+      {/* Floating Voice Orb trigger: sits above sticky bar on product detail, bottom nav on mobile, bottom-right on desktop */}
       <button
         type="button"
         onClick={() => setVoiceOverlayOpen(!voiceOverlayOpen)}
         data-state={voiceStatus}
         aria-label={voiceOverlayOpen ? 'Close voice assistant' : 'Open voice shopping assistant'}
-        className="vc-orb fixed z-40 bottom-20 right-4 md:bottom-7 md:right-7 w-14 h-14 md:w-16 md:h-16 rounded-full flex items-center justify-center text-[#050505] cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+        className={`vc-orb fixed z-40 right-4 md:bottom-7 md:right-7 w-14 h-14 md:w-16 md:h-16 rounded-full flex items-center justify-center text-[#050505] cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white ${
+          route === 'product' ? 'bottom-[8.75rem]' : 'bottom-20'
+        }`}
       >
         {voiceOverlayOpen ? (
           <X className="w-6 h-6 text-[#050505]" />
@@ -134,8 +137,11 @@ export const VoiceAssistantShell: React.FC = () => {
         <div
           role="dialog"
           aria-label="VibeCart Voice Assistant"
-          className="fixed z-50 inset-x-3 bottom-20 md:inset-x-auto md:right-7 md:bottom-28 md:w-[440px] max-h-[calc(100dvh-6.5rem)] overflow-y-auto rounded-[24px] vc-glass-blur p-4 sm:p-5 shadow-2xl"
+          className={`fixed z-50 inset-x-3 md:inset-x-auto md:right-7 md:bottom-28 md:w-[440px] max-h-[calc(100dvh-6.5rem)] overflow-y-auto rounded-[24px] vc-glass-blur p-4 sm:p-5 shadow-2xl ${
+            route === 'product' ? 'bottom-[8.75rem]' : 'bottom-20'
+          }`}
         >
+          <div className="w-10 h-1 rounded-full bg-white/20 mx-auto mb-3 md:hidden" aria-hidden="true" />
           <div className="flex items-center justify-between gap-3 mb-4">
             <div className="flex items-center gap-2.5 min-w-0">
               <button

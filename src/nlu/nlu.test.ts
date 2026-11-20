@@ -190,3 +190,43 @@ test('new distinct product categories and searchCatalog work accurately', () => 
   assert.ok(carry.length >= 2);
 });
 
+test('ruleParse and validateParsedIntent handle SAVE_ADDRESS, UPDATE_PROFILE, and TOGGLE_SIMPLE_VIEW', () => {
+  const saveAddr = ruleParse(
+    'Save my delivery address: name Aarav Sharma, phone 9876543210, address 42 MG Road, city Bengaluru, state Karnataka, pincode 560038'
+  );
+  assert.equal(saveAddr.intent, 'SAVE_ADDRESS');
+  assert.equal(saveAddr.entities.saveAddress, true);
+  assert.equal(saveAddr.entities.checkoutFields?.name, 'Aarav Sharma');
+  assert.equal(saveAddr.entities.checkoutFields?.line1, '42 MG Road');
+  assert.equal(saveAddr.entities.checkoutFields?.city, 'Bengaluru');
+  assert.equal(saveAddr.entities.checkoutFields?.pincode, '560038');
+
+  const updateProf = ruleParse('Update my profile name Piyush Sharma and phone 9876543210');
+  assert.equal(updateProf.intent, 'UPDATE_PROFILE');
+  assert.equal(updateProf.entities.profileFields?.fullName, 'Piyush Sharma');
+  assert.equal(updateProf.entities.profileFields?.phone, '9876543210');
+
+  const toggle2D = ruleParse('Turn on simple view 2D studio photos');
+  assert.equal(toggle2D.intent, 'TOGGLE_SIMPLE_VIEW');
+  assert.equal(toggle2D.entities.simpleView, true);
+
+  const toggle3D = ruleParse('Switch to 3D view');
+  assert.equal(toggle3D.intent, 'TOGGLE_SIMPLE_VIEW');
+  assert.equal(toggle3D.entities.simpleView, false);
+
+  const validated = validateParsedIntent({
+    intent: 'SAVE_ADDRESS',
+    confidence: 0.94,
+    entities: {
+      saveAddress: true,
+      checkoutFields: { name: 'Aarav', phone: '+91 9876543210', line1: '42 MG Road', city: 'Bengaluru', pincode: '560038' },
+      profileFields: { fullName: 'Aarav Sharma', phone: '+91 9876543210' },
+      simpleView: true,
+    },
+  });
+  assert.equal(validated.parsed.intent, 'SAVE_ADDRESS');
+  assert.equal(validated.parsed.entities.saveAddress, true);
+  assert.equal(validated.parsed.entities.profileFields?.phone, '9876543210');
+  assert.equal(validated.parsed.entities.simpleView, true);
+});
+

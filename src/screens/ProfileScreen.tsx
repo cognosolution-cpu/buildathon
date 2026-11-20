@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { Check, Cloud, Globe, Layers, LogOut, Mail, MapPin, Shield, User, Volume2 } from 'lucide-react';
+import { Check, Cloud, Globe, Layers, LogOut, Mail, MapPin, Plus, Shield, Star, Trash2, User, Volume2 } from 'lucide-react';
 import { isSupabaseConfigured } from '../lib/supabase';
 import { LANGUAGES } from '../nlu/i18n';
 import { useVibeCart } from '../state/store';
 import { resolveMurfVoice } from '../voice/murfVoices';
 import { speakReply } from '../voice/speech';
+import { PWAInstallButton } from '../components/PWAInstallButton';
 
 export const ProfileScreen: React.FC = () => {
   const {
@@ -15,6 +16,11 @@ export const ProfileScreen: React.FC = () => {
     simpleView,
     setSimpleView,
     addresses,
+    saveAddress,
+    deleteAddress,
+    setDefaultAddress,
+    setCheckoutDraft,
+    navigate,
     pushChip,
     authMode,
     authEmail,
@@ -34,9 +40,22 @@ export const ProfileScreen: React.FC = () => {
   const [savingProfile, setSavingProfile] = useState(false);
   const [profileMessage, setProfileMessage] = useState('');
 
+  const [addrFormOpen, setAddrFormOpen] = useState(false);
+  const [addrName, setAddrName] = useState(profile?.fullName ?? '');
+  const [addrPhone, setAddrPhone] = useState(profile?.phone ?? '');
+  const [addrLine1, setAddrLine1] = useState('');
+  const [addrCity, setAddrCity] = useState('');
+  const [addrState, setAddrState] = useState('');
+  const [addrPincode, setAddrPincode] = useState('');
+  const [addrDefault, setAddrDefault] = useState(true);
+  const [addrError, setAddrError] = useState('');
+  const [savingAddress, setSavingAddress] = useState(false);
+
   useEffect(() => {
     setFullNameInput(profile?.fullName ?? '');
     setPhoneInput(profile?.phone ?? '');
+    setAddrName((prev) => prev || profile?.fullName || '');
+    setAddrPhone((prev) => prev || profile?.phone || '');
   }, [profile]);
 
   const handleMagicLink = async (e: React.FormEvent) => {
@@ -54,6 +73,50 @@ export const ProfileScreen: React.FC = () => {
     const res = await updateProfile({ fullName: fullNameInput, phone: phoneInput });
     setSavingProfile(false);
     setProfileMessage(res.message);
+  };
+
+  const handleSaveAddressForm = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAddrError('');
+    const digitsPhone = addrPhone.replace(/\D/g, '');
+    const digitsPin = addrPincode.replace(/\D/g, '');
+    if (addrName.trim().length < 2) {
+      setAddrError('Enter recipient full name.');
+      return;
+    }
+    if (!/^\d{10}$/.test(digitsPhone)) {
+      setAddrError('Enter a valid 10-digit mobile number.');
+      return;
+    }
+    if (addrLine1.trim().length < 5) {
+      setAddrError('Enter flat/house number and street address.');
+      return;
+    }
+    if (addrCity.trim().length < 2 || addrState.trim().length < 2) {
+      setAddrError('Enter both city and state.');
+      return;
+    }
+    if (!/^\d{6}$/.test(digitsPin)) {
+      setAddrError('Enter a valid 6-digit PIN code.');
+      return;
+    }
+
+    setSavingAddress(true);
+    await saveAddress({
+      name: addrName.trim(),
+      phone: digitsPhone,
+      line1: addrLine1.trim(),
+      city: addrCity.trim(),
+      state: addrState.trim(),
+      pincode: digitsPin,
+      isDefault: addrDefault,
+    });
+    setSavingAddress(false);
+    setAddrLine1('');
+    setAddrCity('');
+    setAddrState('');
+    setAddrPincode('');
+    setAddrFormOpen(false);
   };
 
   return (
@@ -333,60 +396,269 @@ export const ProfileScreen: React.FC = () => {
       </section>
 
       {/* 3D & Accessibility Toggle */}
-      <section className="rounded-[20px] vc-glass p-6 flex items-center justify-between gap-4">
+      <section className="rounded-[20px] vc-glass p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-start gap-3">
           <Layers className="w-5 h-5 text-[#FFA040] shrink-0 mt-0.5" />
           <div>
-            <h2 className="font-display text-base font-semibold text-[#F5F5F5]">
-              Simple View (2D Studio Photos)
-            </h2>
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="font-display text-base font-semibold text-[#F5F5F5]">
+                Simple View (2D Studio Photos)
+              </h2>
+              <span
+                className={`px-2 py-0.5 rounded-md text-[11px] font-semibold ${
+                  simpleView ? 'bg-[#2EE59D]/15 text-[#2EE59D]' : 'bg-white/10 text-[#9A9A9A]'
+                }`}
+              >
+                {simpleView ? 'ON · 2D Photos' : 'OFF · 3D View'}
+              </span>
+            </div>
             <p className="text-xs text-[#9A9A9A] mt-0.5">
-              Replaces interactive Three.js 3D viewports with lightweight static product studio photos.
+              Replaces interactive Three.js 3D viewports with fast 2D product studio photos across catalog & product pages.
             </p>
           </div>
         </div>
-        <button
-          type="button"
-          role="switch"
-          aria-checked={simpleView}
-          onClick={() => setSimpleView(!simpleView)}
-          className={`w-12 h-7 rounded-full p-1 transition-colors shrink-0 cursor-pointer ${
-            simpleView ? 'bg-[#2EE59D]' : 'bg-white/15'
-          }`}
-        >
-          <span
-            className={`block w-5 h-5 rounded-full bg-[#050505] transition-transform ${
-              simpleView ? 'translate-x-5' : 'translate-x-0'
+        <div className="flex items-center gap-3 self-end sm:self-center shrink-0">
+          <button
+            type="button"
+            onClick={() => navigate('product')}
+            className="h-9 px-3 rounded-xl bg-white/5 border border-white/10 text-xs font-medium text-[#FFA040] hover:border-[#FF6A00] cursor-pointer whitespace-nowrap"
+          >
+            Preview View
+          </button>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={simpleView}
+            aria-label="Toggle Simple View (2D Studio Photos)"
+            onClick={() => setSimpleView(!simpleView)}
+            className={`w-12 h-7 rounded-full p-1 transition-colors shrink-0 cursor-pointer ${
+              simpleView ? 'bg-[#2EE59D]' : 'bg-white/15'
             }`}
-          />
-        </button>
+          >
+            <span
+              className={`block w-5 h-5 rounded-full bg-[#050505] transition-transform ${
+                simpleView ? 'translate-x-5' : 'translate-x-0'
+              }`}
+            />
+          </button>
+        </div>
       </section>
 
+      {/* Install Mobile App (PWA) */}
+      <PWAInstallButton variant="card" />
+
       {/* Saved Addresses */}
-      <section className="rounded-[20px] vc-glass p-6 space-y-3">
-        <div className="flex items-center gap-2.5">
-          <MapPin className="w-5 h-5 text-[#FF6A00]" />
-          <h2 className="font-display text-lg font-semibold text-[#F5F5F5]">
-            Saved Delivery Addresses
-          </h2>
+      <section className="rounded-[20px] vc-glass p-5 sm:p-6 space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <MapPin className="w-5 h-5 text-[#FF6A00]" />
+            <div>
+              <h2 className="font-display text-lg font-semibold text-[#F5F5F5]">
+                Saved Delivery Addresses
+              </h2>
+              <p className="text-xs text-[#9A9A9A]">
+                {authMode === 'authenticated'
+                  ? 'Synced to your account · Say “Save my delivery address...” anytime.'
+                  : 'Saved on this device · Sign in above to sync across devices.'}
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              setAddrFormOpen((v) => !v);
+              setAddrError('');
+            }}
+            className="h-10 px-3.5 rounded-xl bg-white text-[#050505] text-xs font-semibold hover:bg-[#F5F5F5] inline-flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+          >
+            <Plus className="w-4 h-4" />
+            <span>{addrFormOpen ? 'Cancel' : 'Add Address'}</span>
+          </button>
         </div>
+
+        {addrFormOpen && (
+          <form
+            onSubmit={handleSaveAddressForm}
+            className="rounded-[16px] bg-[#0B0B0B] border border-[#FF6A00]/35 p-4 space-y-3"
+          >
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label htmlFor="addr-name" className="block text-xs text-[#9A9A9A] mb-1">
+                  Full Name
+                </label>
+                <input
+                  id="addr-name"
+                  type="text"
+                  value={addrName}
+                  onChange={(e) => setAddrName(e.target.value)}
+                  placeholder="Aarav Sharma"
+                  className="w-full h-11 px-3 rounded-xl bg-[#141414] border border-white/10 text-sm text-[#F5F5F5] focus:outline-none focus:border-[#FF6A00]"
+                />
+              </div>
+              <div>
+                <label htmlFor="addr-phone" className="block text-xs text-[#9A9A9A] mb-1">
+                  10-Digit Mobile
+                </label>
+                <input
+                  id="addr-phone"
+                  type="tel"
+                  value={addrPhone}
+                  onChange={(e) => setAddrPhone(e.target.value)}
+                  placeholder="9876543210"
+                  className="w-full h-11 px-3 rounded-xl bg-[#141414] border border-white/10 text-sm font-mono-num text-[#F5F5F5] focus:outline-none focus:border-[#FF6A00]"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label htmlFor="addr-line1" className="block text-xs text-[#9A9A9A] mb-1">
+                Street / House / Flat Address
+              </label>
+              <input
+                id="addr-line1"
+                type="text"
+                value={addrLine1}
+                onChange={(e) => setAddrLine1(e.target.value)}
+                placeholder="42 MG Road, Indiranagar"
+                className="w-full h-11 px-3 rounded-xl bg-[#141414] border border-white/10 text-sm text-[#F5F5F5] focus:outline-none focus:border-[#FF6A00]"
+              />
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <label htmlFor="addr-city" className="block text-xs text-[#9A9A9A] mb-1">
+                  City
+                </label>
+                <input
+                  id="addr-city"
+                  type="text"
+                  value={addrCity}
+                  onChange={(e) => setAddrCity(e.target.value)}
+                  placeholder="Bengaluru"
+                  className="w-full h-11 px-3 rounded-xl bg-[#141414] border border-white/10 text-sm text-[#F5F5F5] focus:outline-none focus:border-[#FF6A00]"
+                />
+              </div>
+              <div>
+                <label htmlFor="addr-state" className="block text-xs text-[#9A9A9A] mb-1">
+                  State
+                </label>
+                <input
+                  id="addr-state"
+                  type="text"
+                  value={addrState}
+                  onChange={(e) => setAddrState(e.target.value)}
+                  placeholder="Karnataka"
+                  className="w-full h-11 px-3 rounded-xl bg-[#141414] border border-white/10 text-sm text-[#F5F5F5] focus:outline-none focus:border-[#FF6A00]"
+                />
+              </div>
+              <div>
+                <label htmlFor="addr-pin" className="block text-xs text-[#9A9A9A] mb-1">
+                  PIN Code
+                </label>
+                <input
+                  id="addr-pin"
+                  type="text"
+                  value={addrPincode}
+                  onChange={(e) => setAddrPincode(e.target.value)}
+                  placeholder="560038"
+                  className="w-full h-11 px-3 rounded-xl bg-[#141414] border border-white/10 text-sm font-mono-num text-[#F5F5F5] focus:outline-none focus:border-[#FF6A00]"
+                />
+              </div>
+            </div>
+
+            <label className="inline-flex items-center gap-2 text-xs text-[#9A9A9A] cursor-pointer">
+              <input
+                type="checkbox"
+                checked={addrDefault}
+                onChange={(e) => setAddrDefault(e.target.checked)}
+                className="accent-[#FF6A00]"
+              />
+              <span>Set as default checkout delivery address</span>
+            </label>
+
+            {addrError && <p className="text-xs text-[#FF4D5E]">{addrError}</p>}
+
+            <div className="flex justify-end">
+              <button
+                type="submit"
+                disabled={savingAddress}
+                className="h-11 px-5 rounded-[14px] bg-white text-[#050505] text-xs font-semibold hover:bg-[#F5F5F5] inline-flex items-center gap-2 disabled:opacity-60 cursor-pointer"
+              >
+                <Check className="w-4 h-4" />
+                <span>{savingAddress ? 'Saving...' : 'Save Address'}</span>
+              </button>
+            </div>
+          </form>
+        )}
+
         {addresses.length === 0 ? (
-          <p className="text-xs text-[#9A9A9A]">
-            No saved delivery addresses yet. Enter your shipping address during checkout to save it here.
-          </p>
+          <div className="rounded-[14px] bg-[#0B0B0B] border border-white/10 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <p className="text-xs text-[#9A9A9A]">
+              No saved delivery addresses yet. Tap “Add Address” above or say “Save my delivery address...” to the AI assistant.
+            </p>
+          </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {addresses.map((addr) => (
               <div
                 key={addr.id}
-                className="rounded-[14px] bg-[#0B0B0B] border border-white/10 p-4 space-y-1 text-sm"
+                className={`rounded-[14px] bg-[#0B0B0B] border p-4 space-y-2 text-sm ${
+                  addr.isDefault ? 'border-[#FF6A00]/60' : 'border-white/10'
+                }`}
               >
-                <p className="font-semibold text-[#F5F5F5]">{addr.name}</p>
+                <div className="flex items-start justify-between gap-2">
+                  <p className="font-semibold text-[#F5F5F5]">{addr.name}</p>
+                  {addr.isDefault && (
+                    <span className="px-2 py-0.5 rounded-md bg-[#FF6A00]/15 text-[10px] font-semibold text-[#FFA040] inline-flex items-center gap-1 shrink-0">
+                      <Star className="w-3 h-3 fill-[#FFA040]" />
+                      Default
+                    </span>
+                  )}
+                </div>
                 <p className="text-xs text-[#9A9A9A]">{addr.line1}</p>
                 <p className="text-xs text-[#9A9A9A]">
                   {addr.city}, {addr.state} — {addr.pincode}
                 </p>
-                <p className="text-xs font-mono-num text-[#FFA040] pt-1">{addr.phone}</p>
+                <p className="text-xs font-mono-num text-[#FFA040]">{addr.phone}</p>
+
+                <div className="pt-2 border-t border-white/10 flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCheckoutDraft({
+                        name: addr.name,
+                        phone: addr.phone,
+                        line1: addr.line1,
+                        city: addr.city,
+                        state: addr.state,
+                        pincode: addr.pincode,
+                      });
+                      pushChip({ type: 'success', text: `Applied ${addr.city} address` });
+                      navigate('checkout');
+                    }}
+                    className="h-8 px-2.5 rounded-lg bg-white/10 text-[11px] font-medium text-[#F5F5F5] hover:bg-white/15 cursor-pointer"
+                  >
+                    Use at Checkout
+                  </button>
+                  {!addr.isDefault && (
+                    <button
+                      type="button"
+                      onClick={() => setDefaultAddress(addr.id)}
+                      className="h-8 px-2.5 rounded-lg bg-white/5 border border-white/10 text-[11px] text-[#9A9A9A] hover:text-white cursor-pointer"
+                    >
+                      Set Default
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => deleteAddress(addr.id)}
+                    aria-label={`Delete address in ${addr.city}`}
+                    className="ml-auto h-8 w-8 rounded-lg bg-white/5 border border-white/10 text-[#9A9A9A] hover:text-[#FF4D5E] flex items-center justify-center cursor-pointer"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
               </div>
             ))}
           </div>

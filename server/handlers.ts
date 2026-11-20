@@ -92,6 +92,22 @@ const NLU_ENTITIES_PROPERTIES = {
       pincode: { type: Type.STRING, description: '6-digit Indian PIN code.' },
     },
   },
+  profileFields: {
+    type: Type.OBJECT,
+    description: 'Personal info fields for profile screen.',
+    properties: {
+      fullName: { type: Type.STRING, description: 'User full name.' },
+      phone: { type: Type.STRING, description: '10-digit Indian mobile number.' },
+    },
+  },
+  saveAddress: {
+    type: Type.BOOLEAN,
+    description: 'True when the user wants to save the address permanently to Saved Delivery Addresses.',
+  },
+  simpleView: {
+    type: Type.BOOLEAN,
+    description: 'True for 2D studio photos Simple View; false for 3D interactive view.',
+  },
   payMethod: { type: Type.STRING, description: 'card or upi.' },
   upiId: { type: Type.STRING, description: 'UPI ID like name@upi.' },
   useSavedAddress: { type: Type.BOOLEAN, description: 'True if user wants saved address applied.' },
@@ -125,7 +141,7 @@ const NLU_RESPONSE_SCHEMA = {
     intent: {
       type: Type.STRING,
       description:
-        'One of: SEARCH_PRODUCTS, RECOMMEND, ASK_PRODUCT, ADD_TO_CART, REMOVE_FROM_CART, UPDATE_QUANTITY, CLEAR_CART, COMPARE, SHOW_CART, CHECKOUT, FILL_CHECKOUT, NAVIGATE, SIGN_IN_GOOGLE, CONFIRM, DENY, TRACK_ORDER, RETURN_ITEM, CHANGE_LANGUAGE, HELP, UNKNOWN',
+        'One of: SEARCH_PRODUCTS, RECOMMEND, ASK_PRODUCT, ADD_TO_CART, REMOVE_FROM_CART, UPDATE_QUANTITY, CLEAR_CART, COMPARE, SHOW_CART, CHECKOUT, FILL_CHECKOUT, SAVE_ADDRESS, UPDATE_PROFILE, TOGGLE_SIMPLE_VIEW, NAVIGATE, SIGN_IN_GOOGLE, CONFIRM, DENY, TRACK_ORDER, RETURN_ITEM, CHANGE_LANGUAGE, HELP, UNKNOWN',
     },
     confidence: {
       type: Type.NUMBER,
@@ -273,12 +289,12 @@ export async function handleAgoraStart(body: Record<string, unknown>): Promise<H
 
   const systemPrompt = `You are VibeCart's live conversational shopping assistant powered by Agora Voice AI and Murf Falcon 2.
 Speak naturally and concisely (under 24 words per reply) in the shopper's language (${lang}). Never use markdown bullets or emojis in spoken text.
-Important: The VibeCart app automatically executes navigation, cart additions/removals, product comparisons, checkout address form filling, and payment triggers in real time as the shopper speaks.
-Never claim there was a technical issue or say you cannot access the cart or checkout form.
+Important: The VibeCart app automatically executes navigation, cart additions/removals, product comparisons, 2D/3D view toggling, saving profile details & delivery addresses, checkout form filling, and payment triggers in real time as the shopper speaks.
+Never claim there was a technical issue or say you cannot access the cart, profile, saved addresses, or checkout form.
 Store catalog (prices in Indian Rupees):
 ${catalogSummary}
 Current context: screen=${String(context.screen ?? 'home')}, cartCount=${Number(context.cartCount ?? 0)}.
-On checkout, help fill name, 10-digit mobile, street address, city, state, and 6-digit PIN code.`;
+On checkout or profile, help fill and save name, 10-digit mobile, street address, city, state, and 6-digit PIN code.`;
 
   try {
     const joinRes = await fetch(
@@ -606,7 +622,10 @@ Active store categories:
 Extraction rules:
 - If the user mentions any budget or price cap (e.g. "around 3000", "under 2k", "budget 5000"), always set entities.maxPrice as a number in INR.
 - Map activity/occasion words to the best matching category and search query (e.g. "morning jog" -> category="footwear", query="running shoes"; "gaming" -> category="peripherals", query="keyboard"; "gym music" -> category="audio", query="wireless earbuds").
-- Use FILL_CHECKOUT whenever the user provides delivery details (name, phone, street line1, city, state, pincode), selects card/upi, provides upiId, asks to use saved address, or says pay now / submit payment.
+- Use FILL_CHECKOUT whenever the user provides delivery details (name, phone, street line1, city, state, pincode), selects card/upi, provides upiId, asks to use saved address, or says pay now / submit payment. Set saveAddress=true if they also ask to save it.
+- Use SAVE_ADDRESS when the user asks to save/add a delivery address to their profile or save the current address (populate checkoutFields + saveAddress=true).
+- Use UPDATE_PROFILE when the user asks to update or save their personal profile fullName or phone number (populate profileFields).
+- Use TOGGLE_SIMPLE_VIEW when the user asks to turn on/off Simple View or switch between 2D studio photos (simpleView=true) and 3D view (simpleView=false).
 - Use NAVIGATE with targetRoute (home, results, product, compare, cart, checkout, orders, profile) when the user asks to go to or open a page.
 - Use followUpActions if the user asks for multiple actions in one turn (e.g., ADD_TO_CART followed by CHECKOUT, or FILL_CHECKOUT followed by CHECKOUT).
 - Only populate entities.reason when intent is RETURN_ITEM.

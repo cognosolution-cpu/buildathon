@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { CreditCard, Lock, ShieldCheck, Smartphone, X } from 'lucide-react';
+import { BookmarkPlus, CreditCard, Lock, ShieldCheck, Smartphone, X } from 'lucide-react';
 import { isRazorpayConfigured, launchRazorpayCheckout } from '../lib/razorpay';
 import { isSupabaseConfigured } from '../lib/supabase';
 import { useVibeCart } from '../state/store';
@@ -137,17 +137,29 @@ export const CheckoutScreen: React.FC = () => {
     await submitCheckout();
   };
 
-  const fillSavedAddress = () => {
-    if (!defaultAddr) return;
+  const applySavedAddress = (addr: Address) => {
     setForm({
-      name: defaultAddr.name,
-      phone: defaultAddr.phone,
-      line1: defaultAddr.line1,
-      city: defaultAddr.city,
-      state: defaultAddr.state,
-      pincode: defaultAddr.pincode,
+      name: addr.name,
+      phone: addr.phone,
+      line1: addr.line1,
+      city: addr.city,
+      state: addr.state,
+      pincode: addr.pincode,
     });
     setErrors({});
+  };
+
+  const handleSaveCurrentAddress = async () => {
+    if (!validateForm()) return;
+    await saveAddress({
+      name: form.name,
+      phone: form.phone.replace(/\s+/g, ''),
+      line1: form.line1,
+      city: form.city,
+      state: form.state,
+      pincode: form.pincode,
+      isDefault: true,
+    });
   };
 
   const completePayment = (simulateSuccess: boolean) => {
@@ -160,6 +172,7 @@ export const CheckoutScreen: React.FC = () => {
     const address: Address = {
       id: `addr-${Date.now()}`,
       ...form,
+      isDefault: true,
     };
     saveAddress(address);
     const rpOrderId = `order_rzp_${Date.now()}`;
@@ -189,20 +202,45 @@ export const CheckoutScreen: React.FC = () => {
           noValidate
           className="lg:col-span-7 min-w-0 rounded-[20px] vc-glass p-5 sm:p-8 space-y-5"
         >
-          <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center justify-between gap-2.5">
             <h2 className="font-display text-lg font-semibold text-[#F5F5F5]">
               Delivery Address
             </h2>
-            {defaultAddr && (
+            <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
-                onClick={fillSavedAddress}
-                className="h-9 px-3.5 rounded-xl bg-white/5 border border-white/10 text-xs font-medium text-[#FFA040] hover:border-[#FF6A00] cursor-pointer"
+                onClick={handleSaveCurrentAddress}
+                className="h-9 px-3 rounded-xl bg-white/5 border border-white/15 text-xs font-medium text-[#F5F5F5] hover:border-[#2EE59D] hover:text-[#2EE59D] inline-flex items-center gap-1.5 cursor-pointer"
               >
-                Use saved address ({defaultAddr.city})
+                <BookmarkPlus className="w-3.5 h-3.5" />
+                <span>Save Address</span>
               </button>
-            )}
+              {defaultAddr && (
+                <button
+                  type="button"
+                  onClick={() => applySavedAddress(defaultAddr)}
+                  className="h-9 px-3 rounded-xl bg-[#FF6A00]/10 border border-[#FF6A00]/30 text-xs font-medium text-[#FFA040] hover:border-[#FF6A00] cursor-pointer"
+                >
+                  Fill Saved ({defaultAddr.city})
+                </button>
+              )}
+            </div>
           </div>
+
+          {addresses.length > 1 && (
+            <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1">
+              {addresses.map((addr) => (
+                <button
+                  key={addr.id}
+                  type="button"
+                  onClick={() => applySavedAddress(addr)}
+                  className="px-3 py-1.5 rounded-full bg-white/5 border border-white/10 text-xs text-[#9A9A9A] hover:text-white hover:border-[#FF6A00] whitespace-nowrap shrink-0 cursor-pointer"
+                >
+                  {addr.name.split(' ')[0]} · {addr.city} ({addr.pincode})
+                </button>
+              ))}
+            </div>
+          )}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>

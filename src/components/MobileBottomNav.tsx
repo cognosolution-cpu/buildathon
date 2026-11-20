@@ -23,9 +23,9 @@ export const MobileBottomNav: React.FC = () => {
   return (
     <nav
       aria-label="Mobile bottom navigation"
-      className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#0D0D0D]/95 backdrop-blur-lg border-t border-white/10 pb-safe"
+      className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#0A0A0A]/95 backdrop-blur-xl border-t border-white/10 pb-safe shadow-[0_-8px_30px_rgba(0,0,0,0.65)]"
     >
-      <div className="grid grid-cols-5 items-center h-16 max-w-lg mx-auto px-1">
+      <div className="grid grid-cols-5 items-center h-16 max-w-lg mx-auto px-1.5">
         {tabs.map((tab) => {
           const Icon = tab.icon;
           const active =
@@ -39,10 +39,18 @@ export const MobileBottomNav: React.FC = () => {
               type="button"
               onClick={() => navigate(tab.id)}
               aria-current={active ? 'page' : undefined}
-              className={`relative flex flex-col items-center justify-center min-h-[44px] min-w-[44px] py-1 transition-colors cursor-pointer ${
-                active ? 'text-[#FF6A00]' : 'text-[#9A9A9A] hover:text-[#F5F5F5]'
+              className={`relative flex flex-col items-center justify-center min-h-[48px] min-w-[44px] py-1 rounded-2xl transition-all active:scale-95 cursor-pointer ${
+                active
+                  ? 'text-[#FF6A00] bg-[#FF6A00]/10'
+                  : 'text-[#9A9A9A] hover:text-[#F5F5F5]'
               }`}
             >
+              {active && (
+                <span
+                  aria-hidden="true"
+                  className="absolute top-0.5 w-6 h-0.5 rounded-full bg-[#FF6A00]"
+                />
+              )}
               <div className="relative">
                 <Icon className="w-5 h-5" />
                 {typeof tab.badge === 'number' && tab.badge > 0 && (
@@ -51,7 +59,7 @@ export const MobileBottomNav: React.FC = () => {
                   </span>
                 )}
               </div>
-              <span className="text-[10px] font-medium tracking-tight mt-1 whitespace-nowrap truncate max-w-[64px]">
+              <span className="text-[10px] font-semibold tracking-tight mt-0.5 whitespace-nowrap truncate max-w-[64px]">
                 {tab.label}
               </span>
             </button>

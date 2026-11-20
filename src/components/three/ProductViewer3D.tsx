@@ -27,6 +27,11 @@ export const ProductViewer3D: React.FC<ProductViewer3DProps> = ({
   const sceneRef = useRef<THREE.Scene | null>(null);
   const requestRenderRef = useRef<() => void>(() => {});
   const resetCamRef = useRef<() => void>(() => {});
+  const [imgError, setImgError] = React.useState(false);
+
+  useEffect(() => {
+    setImgError(false);
+  }, [imageUrl]);
 
   useEffect(() => {
     if (simpleView) return;
@@ -243,25 +248,46 @@ export const ProductViewer3D: React.FC<ProductViewer3DProps> = ({
   return (
     <div className="relative w-full aspect-square max-h-[460px] rounded-[20px] bg-[#0B0B0B] border border-white/10 overflow-hidden">
       {simpleView ? (
-        <img
-          src={imageUrl}
-          alt={title}
-          referrerPolicy="no-referrer"
-          className="w-full h-full object-cover"
-        />
+        <div
+          data-testid="simple-view-photo"
+          className="relative z-0 w-full h-full bg-gradient-to-br from-[#16120F] to-[#080808] flex items-center justify-center"
+        >
+          {!imgError ? (
+            <img
+              src={imageUrl}
+              alt={title}
+              referrerPolicy="no-referrer"
+              onError={() => setImgError(true)}
+              className="w-full h-full object-cover"
+            />
+          ) : (
+            <div className="text-center p-6 space-y-2">
+              <div
+                className="w-16 h-16 rounded-2xl mx-auto border border-white/15 flex items-center justify-center"
+                style={{ backgroundColor: accentHex }}
+              >
+                <span className="font-display text-lg font-bold text-[#050505]">2D</span>
+              </div>
+              <p className="text-sm font-medium text-[#F5F5F5]">{title}</p>
+            </div>
+          )}
+          <span className="absolute top-3 left-3 px-2.5 py-1 rounded-lg bg-[#050505]/85 border border-[#2EE59D]/40 text-[11px] font-semibold text-[#2EE59D]">
+            2D Studio Photo
+          </span>
+        </div>
       ) : (
         <div
           ref={mountRef}
           data-testid="three-product-canvas"
-          className="w-full h-full cursor-grab active:cursor-grabbing"
+          className="relative z-0 w-full h-full cursor-grab active:cursor-grabbing"
           aria-label={`Interactive 3D view of ${title}`}
         />
       )}
 
       {/* Solid non-blur controls bar per Three.js WebGL rules */}
-      <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between gap-2 pointer-events-none">
+      <div className="relative z-10 -mt-12 px-3 pb-3 flex items-center justify-between gap-2 pointer-events-none">
         <span className="px-3 py-1.5 rounded-lg bg-[#141414]/95 border border-white/10 text-xs text-[#9A9A9A] pointer-events-auto">
-          {simpleView ? 'Studio Photo' : 'Drag to rotate 3D'}
+          {simpleView ? 'Simple View (2D)' : 'Drag to rotate 3D'}
         </span>
         <div className="flex items-center gap-2 pointer-events-auto">
           {!simpleView && (
@@ -276,9 +302,9 @@ export const ProductViewer3D: React.FC<ProductViewer3DProps> = ({
           <button
             type="button"
             onClick={onToggleSimpleView}
-            className="px-3 py-1.5 rounded-lg bg-[#141414]/95 border border-white/10 text-xs font-medium text-[#F5F5F5] hover:border-[#FF6A00]/60 transition-colors cursor-pointer"
+            className="px-3 py-1.5 rounded-lg bg-[#141414]/95 border border-[#FF6A00]/40 text-xs font-medium text-[#FFA040] hover:bg-[#FF6A00] hover:text-[#050505] transition-colors cursor-pointer"
           >
-            {simpleView ? 'Switch to 3D View' : 'Simple View'}
+            {simpleView ? 'Switch to 3D View' : 'Simple View (2D)'}
           </button>
         </div>
       </div>

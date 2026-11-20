@@ -31,7 +31,7 @@ export const ProductDetailScreen: React.FC = () => {
   const isCompared = compareIds.includes(product.id);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-20 md:pb-0">
       <button
         type="button"
         onClick={() => navigate('results')}
@@ -124,7 +124,7 @@ export const ProductDetailScreen: React.FC = () => {
 
           {/* Quantity & Primary Purchase CTA */}
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 pt-1">
-            <div className="inline-flex items-center justify-between h-12 px-2 rounded-[14px] bg-[#111111] border border-white/10 sm:w-32">
+            <div className="inline-flex items-center justify-between h-12 px-2 rounded-[14px] bg-[#111111] border border-white/10 sm:w-32 shrink-0">
               <button
                 type="button"
                 aria-label="Decrease quantity"
@@ -149,7 +149,7 @@ export const ProductDetailScreen: React.FC = () => {
             <button
               type="button"
               onClick={() => addToCart(product.id, quantity, activeVariant?.name)}
-              className="flex-1 h-12 px-6 rounded-[14px] bg-white text-[#050505] text-sm font-semibold hover:bg-[#F5F5F5] hover:shadow-[0_0_24px_rgba(255,160,64,0.3)] active:scale-[0.98] transition-all cursor-pointer whitespace-nowrap"
+              className="w-full sm:w-auto sm:flex-1 h-12 shrink-0 px-6 rounded-[14px] bg-white text-[#050505] text-sm font-semibold hover:bg-[#F5F5F5] hover:shadow-[0_0_24px_rgba(255,160,64,0.3)] active:scale-[0.98] transition-all cursor-pointer whitespace-nowrap"
             >
               {t(lang, 'addToCart')} · ₹{(product.price * quantity).toLocaleString('en-IN')}
             </button>
@@ -192,6 +192,23 @@ export const ProductDetailScreen: React.FC = () => {
             <span>In stock ({product.stock} units) · Free delivery over ₹999</span>
           </div>
         </div>
+      </div>
+
+      {/* Mobile App Sticky Purchase Bar (above MobileBottomNav) */}
+      <div className="md:hidden fixed bottom-16 left-0 right-0 z-30 bg-[#0B0B0B]/95 backdrop-blur-lg border-t border-white/10 px-4 py-2.5 flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-[11px] text-[#9A9A9A] truncate">{activeVariant?.name}</p>
+          <p className="font-mono-num text-base font-bold text-[#F5F5F5] tabular-nums">
+            ₹{(product.price * quantity).toLocaleString('en-IN')}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => addToCart(product.id, quantity, activeVariant?.name)}
+          className="h-11 px-5 rounded-[12px] bg-white text-[#050505] text-xs font-semibold active:scale-95 transition-transform cursor-pointer whitespace-nowrap shrink-0"
+        >
+          {t(lang, 'addToCart')}
+        </button>
       </div>
     </div>
   );

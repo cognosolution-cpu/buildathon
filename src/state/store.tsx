@@ -150,7 +150,9 @@ interface VibeCartContextValue {
   advanceOrderStatus: (orderId: string) => void;
   submitReturn: (orderId: string, itemTitle: string, reason: string) => void;
   addresses: Address[];
-  saveAddress: (address: Address) => void;
+  saveAddress: (address: Omit<Address, 'id'> & { id?: string }) => Promise<Address>;
+  deleteAddress: (id: string) => Promise<void>;
+  setDefaultAddress: (id: string) => Promise<void>;
   checkoutDraft: CheckoutDraft;
   setCheckoutDraft: React.Dispatch<React.SetStateAction<CheckoutDraft>>;
   payMethod: PaymentMethod;
@@ -221,7 +223,7 @@ export const VibeCartProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [payMethod, setPayMethod] = useState<PaymentMethod>('card');
   const [upiId, setUpiId] = useState<string>('success@razorpay');
   const [checkoutSubmitNonce, setCheckoutSubmitNonce] = useState<number>(0);
-  const [simpleView, setSimpleView] = useState<boolean>(initialPersisted.simpleView);
+  const [simpleView, setSimpleViewState] = useState<boolean>(initialPersisted.simpleView);
   const [compareIds, setCompareIds] = useState<string[]>(initialPersisted.compareIds);
 
   const [searchCriteria, setSearchCriteria] = useState<SearchCriteria>({
@@ -339,21 +341,32 @@ export const VibeCartProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         .from('addresses')
         .select('*')
         .eq('user_id', userId)
+        .order('is_default', { ascending: false })
         .order('created_at', { ascending: false });
 
       if (!cancelled && addrRows && addrRows.length > 0) {
-        setAddresses(
-          addrRows.map((a) => ({
-            id: String(a.id),
-            name: String(a.name),
-            phone: String(a.phone),
-            line1: String(a.line1),
-            city: String(a.city),
-            state: String(a.state),
-            pincode: String(a.pincode),
-            isDefault: Boolean(a.is_default),
-          }))
-        );
+        const mappedAddrs: Address[] = addrRows.map((a) => ({
+          id: String(a.id),
+          name: String(a.name),
+          phone: String(a.phone),
+          line1: String(a.line1),
+          city: String(a.city),
+          state: String(a.state),
+          pincode: String(a.pincode),
+          isDefault: Boolean(a.is_default),
+        }));
+        setAddresses(mappedAddrs);
+        const preferred = mappedAddrs.find((a) => a.isDefault) ?? mappedAddrs[0];
+        if (preferred) {
+          setCheckoutDraft((prev) => ({
+            name: prev.name || preferred.name,
+            phone: prev.phone || preferred.phone,
+            line1: prev.line1 || preferred.line1,
+            city: prev.city || preferred.city,
+            state: prev.state || preferred.state,
+            pincode: prev.pincode || preferred.pincode,
+          }));
+        }
       }
 
       // Hydrate active cart items
@@ -527,6 +540,17 @@ export const VibeCartProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       }
     },
     [authUserId]
+  );
+
+  const setSimpleView = useCallback(
+    (simple: boolean) => {
+      setSimpleViewState(simple);
+      pushChip({
+        type: 'info',
+        text: simple ? 'Simple View ON · 2D Studio Photos' : '3D Interactive View ON',
+      });
+    },
+    [pushChip]
   );
 
   const cartCount = useMemo(() => cart.reduce((sum, item) => sum + item.quantity, 0), [cart]);
@@ -909,28 +933,157 @@ export const VibeCartProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   );
 
   const saveAddress = useCallback(
-    (address: Address) => {
+    async (input: Omit<Address, 'id'> & { id?: string }): Promise<Address> => {
+      const tempId = input.id && input.id.trim() ? input.id : `addr-${Date.now()}`;
+      const makeDefault = input.isDefault ?? addresses.length === 0;
+      const normalizedLine = input.line1.trim().toLowerCase();
+      const normalizedPin = input.pincode.trim();
+
+      const nextAddress: Address = {
+        id: tempId,
+        name: input.name.trim(),
+        phone: input.phone.trim(),
+        line1: input.line1.trim(),
+        city: input.city.trim(),
+        state: input.state.trim(),
+        pincode: normalizedPin,
+        isDefault: makeDefault,
+      };
+
       setAddresses((prev) => {
-        const filtered = prev.filter((a) => a.id !== address.id);
-        return [address, ...filtered];
+        const cleaned = prev
+          .filter(
+            (a) =>
+              a.id !== nextAddress.id &&
+              !(
+                a.line1.trim().toLowerCase() === normalizedLine &&
+                a.pincode.trim() === normalizedPin
+              )
+          )
+          .map((a) => (makeDefault ? { ...a, isDefault: false } : a));
+        return makeDefault ? [nextAddress, ...cleaned] : [...cleaned, nextAddress];
       });
-      if (isSupabaseConfigured && supabase && authUserId) {
-        supabase
-          .from('addresses')
-          .insert({
-            user_id: authUserId,
-            name: address.name,
-            phone: address.phone,
-            line1: address.line1,
-            city: address.city,
-            state: address.state,
-            pincode: address.pincode,
-            is_default: Boolean(address.isDefault),
-          })
-          .then(() => undefined);
+
+      if (makeDefault) {
+        setCheckoutDraft((prev) => ({
+          name: nextAddress.name || prev.name,
+          phone: nextAddress.phone || prev.phone,
+          line1: nextAddress.line1 || prev.line1,
+          city: nextAddress.city || prev.city,
+          state: nextAddress.state || prev.state,
+          pincode: nextAddress.pincode || prev.pincode,
+        }));
       }
+
+      if (isSupabaseConfigured && supabase && authUserId) {
+        try {
+          if (makeDefault) {
+            await supabase
+              .from('addresses')
+              .update({ is_default: false })
+              .eq('user_id', authUserId);
+          }
+
+          const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+            tempId
+          );
+
+          const payload = {
+            user_id: authUserId,
+            name: nextAddress.name,
+            phone: nextAddress.phone,
+            line1: nextAddress.line1,
+            city: nextAddress.city,
+            state: nextAddress.state,
+            pincode: nextAddress.pincode,
+            is_default: makeDefault,
+          };
+
+          const { data: savedRow } = isUuid
+            ? await supabase
+                .from('addresses')
+                .update(payload)
+                .eq('id', tempId)
+                .eq('user_id', authUserId)
+                .select('id')
+                .maybeSingle()
+            : await supabase
+                .from('addresses')
+                .insert(payload)
+                .select('id')
+                .maybeSingle();
+
+          if (savedRow?.id) {
+            const dbId = String(savedRow.id);
+            nextAddress.id = dbId;
+            setAddresses((prev) => prev.map((a) => (a.id === tempId ? { ...a, id: dbId } : a)));
+          }
+          await logUserActivity(authUserId, 'address_saved', {
+            city: nextAddress.city,
+            pincode: nextAddress.pincode,
+          });
+        } catch {
+          // Local storage still preserves the address even if offline
+        }
+      }
+
+      pushChip({ type: 'success', text: `Saved delivery address (${nextAddress.city})` });
+      return nextAddress;
     },
-    [authUserId]
+    [addresses.length, authUserId, pushChip]
+  );
+
+  const deleteAddress = useCallback(
+    async (id: string) => {
+      setAddresses((prev) => {
+        const remaining = prev.filter((a) => a.id !== id);
+        if (remaining.length > 0 && !remaining.some((a) => a.isDefault)) {
+          remaining[0] = { ...remaining[0], isDefault: true };
+        }
+        return remaining;
+      });
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+      if (isUuid && isSupabaseConfigured && supabase && authUserId) {
+        await supabase.from('addresses').delete().eq('id', id).eq('user_id', authUserId);
+      }
+      pushChip({ type: 'info', text: 'Address removed' });
+    },
+    [authUserId, pushChip]
+  );
+
+  const setDefaultAddress = useCallback(
+    async (id: string) => {
+      let chosen: Address | undefined;
+      setAddresses((prev) => {
+        chosen = prev.find((a) => a.id === id);
+        return prev
+          .map((a) => ({ ...a, isDefault: a.id === id }))
+          .sort((a, b) => Number(Boolean(b.isDefault)) - Number(Boolean(a.isDefault)));
+      });
+      if (chosen) {
+        setCheckoutDraft({
+          name: chosen.name,
+          phone: chosen.phone,
+          line1: chosen.line1,
+          city: chosen.city,
+          state: chosen.state,
+          pincode: chosen.pincode,
+        });
+      }
+      if (isSupabaseConfigured && supabase && authUserId) {
+        await supabase.from('addresses').update({ is_default: false }).eq('user_id', authUserId);
+        const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+        if (isUuid) {
+          await supabase
+            .from('addresses')
+            .update({ is_default: true })
+            .eq('id', id)
+            .eq('user_id', authUserId);
+        }
+      }
+      pushChip({ type: 'success', text: 'Default delivery address updated' });
+    },
+    [authUserId, pushChip]
   );
 
   const updateProfile = useCallback(
@@ -1291,6 +1444,18 @@ export const VibeCartProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           checkoutDraftRef.current = mergedDraft;
           setCheckoutDraft(mergedDraft);
 
+          if (action.entities.saveAddress && mergedDraft.line1 && mergedDraft.city) {
+            saveAddress({
+              name: mergedDraft.name || profile?.fullName || 'VibeCart Shopper',
+              phone: mergedDraft.phone || profile?.phone || '9876543210',
+              line1: mergedDraft.line1,
+              city: mergedDraft.city,
+              state: mergedDraft.state || 'India',
+              pincode: mergedDraft.pincode || '560001',
+              isDefault: true,
+            });
+          }
+
           if (action.entities.payMethod) {
             setPayMethod(action.entities.payMethod);
           }
@@ -1314,12 +1479,110 @@ export const VibeCartProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           if (action.entities.checkoutFields?.city) updatedParts.push('city');
           if (action.entities.checkoutFields?.state) updatedParts.push('state');
           if (action.entities.checkoutFields?.pincode) updatedParts.push('PIN code');
+          if (action.entities.saveAddress) updatedParts.push('saved to profile');
           if (action.entities.payMethod) updatedParts.push(`${action.entities.payMethod.toUpperCase()} payment`);
           if (action.entities.useSavedAddress) updatedParts.push('saved address');
 
           const summary = updatedParts.length > 0 ? updatedParts.join(', ') : 'checkout details';
           pushChip({ type: 'success', text: `Updated ${summary}` });
           return `Updated ${summary} on checkout.`;
+        }
+
+        case 'SAVE_ADDRESS': {
+          const merged = {
+            name:
+              action.entities.checkoutFields?.name ||
+              checkoutDraftRef.current.name ||
+              profile?.fullName ||
+              '',
+            phone:
+              action.entities.checkoutFields?.phone ||
+              checkoutDraftRef.current.phone ||
+              profile?.phone ||
+              '',
+            line1:
+              action.entities.checkoutFields?.line1 ||
+              checkoutDraftRef.current.line1 ||
+              '',
+            city:
+              action.entities.checkoutFields?.city ||
+              checkoutDraftRef.current.city ||
+              '',
+            state:
+              action.entities.checkoutFields?.state ||
+              checkoutDraftRef.current.state ||
+              '',
+            pincode:
+              action.entities.checkoutFields?.pincode ||
+              checkoutDraftRef.current.pincode ||
+              '',
+          };
+
+          checkoutDraftRef.current = merged;
+          setCheckoutDraft(merged);
+
+          if (!merged.line1 || !merged.city || !merged.pincode) {
+            navigate('profile');
+            pushChip({ type: 'info', text: 'Tell me street, city & PIN code to save address' });
+            return 'Please include street address, city, and 6-digit PIN code so I can save your address.';
+          }
+
+          saveAddress({
+            name: merged.name || 'VibeCart Shopper',
+            phone: merged.phone || '9876543210',
+            line1: merged.line1,
+            city: merged.city,
+            state: merged.state || 'India',
+            pincode: merged.pincode,
+            isDefault: true,
+          });
+          if (route !== 'checkout') {
+            navigate('profile');
+          }
+          return `Saved delivery address in ${merged.city} (${merged.pincode}) to your profile.`;
+        }
+
+        case 'UPDATE_PROFILE': {
+          const nextName =
+            action.entities.profileFields?.fullName ||
+            profile?.fullName ||
+            checkoutDraftRef.current.name ||
+            '';
+          const nextPhone =
+            action.entities.profileFields?.phone ||
+            profile?.phone ||
+            checkoutDraftRef.current.phone ||
+            '';
+
+          if (!nextName && !nextPhone) {
+            navigate('profile');
+            return 'Tell me your full name or 10-digit mobile number to update your profile.';
+          }
+
+          setCheckoutDraft((prev) => ({
+            ...prev,
+            name: nextName || prev.name,
+            phone: nextPhone || prev.phone,
+          }));
+
+          if (nextName.length >= 2) {
+            updateProfile({ fullName: nextName, phone: nextPhone });
+          } else {
+            pushChip({ type: 'success', text: `Updated phone ${nextPhone}` });
+          }
+          navigate('profile');
+          return `Saved your personal details${nextName ? ` for ${nextName}` : ''}.`;
+        }
+
+        case 'TOGGLE_SIMPLE_VIEW': {
+          const nextSimple =
+            typeof action.entities.simpleView === 'boolean'
+              ? action.entities.simpleView
+              : !simpleView;
+          setSimpleView(nextSimple);
+          return nextSimple
+            ? 'Switched to Simple View with 2D studio product photos.'
+            : 'Switched back to interactive 3D product view.';
         }
 
         case 'CONFIRM': {
@@ -1361,7 +1624,7 @@ export const VibeCartProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         }
 
         case 'HELP': {
-          return 'Try saying: Add PulseBuds Air ANC and go to checkout, or Fill my name, phone, address, city, state and pincode.';
+          return 'Try saying: Add PulseBuds Air ANC and go to checkout, Save my delivery address, Update my profile phone, or Turn on simple view.';
         }
 
         default: {
@@ -1379,14 +1642,20 @@ export const VibeCartProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       navigate,
       orders,
       pendingConfirmation,
+      profile?.fullName,
+      profile?.phone,
       pushChip,
       removeFromCart,
       resolveRef,
       route,
+      saveAddress,
       setLang,
+      setSimpleView,
       signInWithGoogle,
+      simpleView,
       submitReturn,
       triggerCheckoutSubmit,
+      updateProfile,
       updateQuantity,
     ]
   );
@@ -1581,6 +1850,8 @@ export const VibeCartProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     submitReturn,
     addresses,
     saveAddress,
+    deleteAddress,
+    setDefaultAddress,
     checkoutDraft,
     setCheckoutDraft,
     payMethod,

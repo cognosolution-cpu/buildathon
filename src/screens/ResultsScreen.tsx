@@ -105,7 +105,7 @@ export const ResultsScreen: React.FC = () => {
 
         {/* Interactive Category Tabs + Price Filters */}
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-          <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Category filters">
+          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar sm:flex-wrap pb-0.5" role="group" aria-label="Category filters">
             {CATEGORIES.map((cat) => {
               const active = searchCriteria.category === cat.id;
               return (
@@ -114,7 +114,7 @@ export const ResultsScreen: React.FC = () => {
                   type="button"
                   onClick={() => applySearch({ category: cat.id }, false)}
                   aria-pressed={active}
-                  className={`h-8 px-3.5 rounded-full text-xs font-medium border transition-all cursor-pointer whitespace-nowrap ${
+                  className={`h-8 px-3.5 rounded-full text-xs font-medium border transition-all cursor-pointer whitespace-nowrap shrink-0 ${
                     active
                       ? 'bg-[#FF6A00]/20 border-[#FF6A00] text-[#F5F5F5] shadow-[0_0_12px_rgba(255,106,0,0.22)]'
                       : 'bg-white/5 border-white/10 text-[#9A9A9A] hover:text-[#F5F5F5]'
@@ -126,8 +126,8 @@ export const ResultsScreen: React.FC = () => {
             })}
           </div>
 
-          <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Price filters">
-            <SlidersHorizontal className="w-3.5 h-3.5 text-[#9A9A9A] mr-1" />
+          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar sm:flex-wrap pb-0.5" role="group" aria-label="Price filters">
+            <SlidersHorizontal className="w-3.5 h-3.5 text-[#9A9A9A] mr-1 shrink-0" />
             {PRICE_CAPS.map((cap) => {
               const active = searchCriteria.maxPrice === cap.value;
               return (
@@ -136,7 +136,7 @@ export const ResultsScreen: React.FC = () => {
                   type="button"
                   onClick={() => applySearch({ maxPrice: cap.value }, false)}
                   aria-pressed={active}
-                  className={`h-8 px-3 rounded-full text-xs font-medium border transition-all cursor-pointer whitespace-nowrap ${
+                  className={`h-8 px-3 rounded-full text-xs font-medium border transition-all cursor-pointer whitespace-nowrap shrink-0 ${
                     active
                       ? 'bg-white text-[#050505] border-white'
                       : 'bg-white/5 border-white/10 text-[#9A9A9A] hover:text-[#F5F5F5]'
@@ -168,7 +168,7 @@ export const ResultsScreen: React.FC = () => {
           </button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-6">
           {lastResults.map((product, idx) => (
             <ProductCard
               key={product.id}

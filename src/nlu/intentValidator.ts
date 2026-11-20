@@ -21,6 +21,9 @@ const VALID_INTENTS: Set<IntentType> = new Set([
   'SHOW_CART',
   'CHECKOUT',
   'FILL_CHECKOUT',
+  'SAVE_ADDRESS',
+  'UPDATE_PROFILE',
+  'TOGGLE_SIMPLE_VIEW',
   'NAVIGATE',
   'SIGN_IN_GOOGLE',
   'CONFIRM',
@@ -94,6 +97,20 @@ function sanitizeCheckoutFields(raw: unknown): Partial<CheckoutDraft> | undefine
   return Object.keys(out).length > 0 ? out : undefined;
 }
 
+function sanitizeProfileFields(raw: unknown): { fullName?: string; phone?: string } | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const obj = raw as Record<string, unknown>;
+  const out: { fullName?: string; phone?: string } = {};
+  if (typeof obj.fullName === 'string' && obj.fullName.trim()) {
+    out.fullName = obj.fullName.trim().slice(0, 80);
+  }
+  if (typeof obj.phone === 'string' && obj.phone.trim()) {
+    const digits = obj.phone.replace(/\D/g, '').slice(-10);
+    if (digits) out.phone = digits;
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
 export interface ValidatedLlmResult {
   parsed: ParsedIntent;
   replyHint?: string;
@@ -156,6 +173,14 @@ function parseSingleIntent(record: Record<string, unknown>): ParsedIntent {
   }
   const checkoutFields = sanitizeCheckoutFields(rawEntities.checkoutFields);
   if (checkoutFields) entities.checkoutFields = checkoutFields;
+  const profileFields = sanitizeProfileFields(rawEntities.profileFields);
+  if (profileFields) entities.profileFields = profileFields;
+  if (typeof rawEntities.saveAddress === 'boolean') {
+    entities.saveAddress = rawEntities.saveAddress;
+  }
+  if (typeof rawEntities.simpleView === 'boolean') {
+    entities.simpleView = rawEntities.simpleView;
+  }
   if (rawEntities.payMethod === 'card' || rawEntities.payMethod === 'upi') {
     entities.payMethod = rawEntities.payMethod as PaymentMethod;
   }

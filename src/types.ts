@@ -160,6 +160,9 @@ export type IntentType =
   | 'SHOW_CART'
   | 'CHECKOUT'
   | 'FILL_CHECKOUT'
+  | 'SAVE_ADDRESS'
+  | 'UPDATE_PROFILE'
+  | 'TOGGLE_SIMPLE_VIEW'
   | 'NAVIGATE'
   | 'SIGN_IN_GOOGLE'
   | 'CONFIRM'
@@ -197,6 +200,12 @@ export interface ParsedIntent {
     lang?: LangCode;
     targetRoute?: RouteName;
     checkoutFields?: Partial<CheckoutDraft>;
+    profileFields?: {
+      fullName?: string;
+      phone?: string;
+    };
+    saveAddress?: boolean;
+    simpleView?: boolean;
     payMethod?: PaymentMethod;
     upiId?: string;
     useSavedAddress?: boolean;
