@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import express from 'express';
 import type { Request, Response } from 'express';
+import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -66,10 +67,18 @@ async function startServer() {
     res.status(result.status).json(result.data);
   });
 
+  const httpServer = http.createServer(app);
+
   if (!isProduction) {
     const { createServer: createViteServer } = await import('vite');
+    const disableHmr = process.env.DISABLE_HMR === 'true';
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: {
+        middlewareMode: true,
+        ws: { server: httpServer },
+        hmr: disableHmr ? false : { server: httpServer },
+        watch: disableHmr ? null : {},
+      },
       appType: 'spa',
     });
     app.use(vite.middlewares);
@@ -81,7 +90,7 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
+  httpServer.listen(PORT, '0.0.0.0', () => {
     console.log(`VibeCart server listening on http://localhost:${PORT}`);
   });
 }
