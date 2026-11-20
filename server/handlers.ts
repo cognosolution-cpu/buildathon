@@ -61,7 +61,8 @@ const NLU_ENTITIES_PROPERTIES = {
   query: { type: Type.STRING, description: 'Product search keywords.' },
   category: {
     type: Type.STRING,
-    description: 'Optional category slug: audio, wearables, smart-home, footwear, peripherals.',
+    description:
+      'Optional category slug: audio, wearables, smart-home, footwear, peripherals, cameras, eyewear, accessories.',
   },
   maxPrice: { type: Type.NUMBER, description: 'Maximum price in INR.' },
   minPrice: { type: Type.NUMBER, description: 'Minimum price in INR.' },
@@ -596,9 +597,12 @@ Never invent products or prices; only extract what the user wants or refers to.
 Active store categories:
 - audio (wireless earbuds, ANC headphones)
 - wearables (smartwatch, fitness tracker)
-- smart-home (smart speaker)
+- smart-home (smart speaker, desk light bar)
 - footwear (running shoes, sneakers)
-- peripherals (mechanical keyboard)
+- peripherals (mechanical keyboard, wireless gaming mouse)
+- cameras (4K action & vlog camera)
+- eyewear (AI smart sunglasses)
+- accessories (MagSafe power bank, commuter tech sling bag)
 Extraction rules:
 - If the user mentions any budget or price cap (e.g. "around 3000", "under 2k", "budget 5000"), always set entities.maxPrice as a number in INR.
 - Map activity/occasion words to the best matching category and search query (e.g. "morning jog" -> category="footwear", query="running shoes"; "gaming" -> category="peripherals", query="keyboard"; "gym music" -> category="audio", query="wireless earbuds").

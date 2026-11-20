@@ -5,7 +5,7 @@ import { useVibeCart } from '../state/store';
 import type { RouteName } from '../types';
 
 export const Header: React.FC = () => {
-  const { route, navigate, cartCount, lang, authMode, authEmail } = useVibeCart();
+  const { route, navigate, cartCount, lang, authMode, authEmail, profile } = useVibeCart();
 
   const navLinks: Array<{ id: RouteName; label: string }> = [
     { id: 'home', label: t(lang, 'navHome') },
@@ -16,8 +16,8 @@ export const Header: React.FC = () => {
   ];
 
   const shortAccountLabel =
-    authMode === 'authenticated' && authEmail
-      ? authEmail.split('@')[0].slice(0, 12)
+    authMode === 'authenticated'
+      ? (profile?.fullName?.trim().split(/\s+/)[0] || authEmail?.split('@')[0] || 'Account').slice(0, 14)
       : 'Sign in';
 
   return (

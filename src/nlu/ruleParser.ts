@@ -39,9 +39,12 @@ const COLOR_WORDS = ['black', 'obsidian', 'amber', 'orange', 'gold', 'silver', '
 function inferCategory(text: string): Product['category'] | undefined {
   if (/(earbud|headphone|headset|audio|earphone|tws|ईयरबड्स|हेडफोन)/i.test(text)) return 'audio';
   if (/(watch|smartwatch|tracker|fitness|घड़ी)/i.test(text)) return 'wearables';
-  if (/(speaker|smart home|alexa|स्पीकर)/i.test(text)) return 'smart-home';
+  if (/(speaker|smart home|alexa|lamp|light\s*bar|desk\s*light|स्पीकर)/i.test(text)) return 'smart-home';
   if (/(shoe|sneaker|running|footwear|जूते)/i.test(text)) return 'footwear';
-  if (/(keyboard|mechanical|mouse|peripheral|कीबोर्ड)/i.test(text)) return 'peripherals';
+  if (/(keyboard|mechanical|mouse|peripheral|कीबोर्ड|माउस)/i.test(text)) return 'peripherals';
+  if (/(camera|action\s*cam|vlog|कैमरा)/i.test(text)) return 'cameras';
+  if (/(glass|glasses|sunglass|eyewear|चश्मा)/i.test(text)) return 'eyewear';
+  if (/(power\s*bank|magsafe|charger|bag|sling|backpack|बैग|पावर\s*बैंक)/i.test(text)) return 'accessories';
   return undefined;
 }
 

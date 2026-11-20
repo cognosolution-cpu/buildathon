@@ -1,13 +1,17 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { CATALOG, searchCatalog } from '../data/catalog';
 import {
+  buildProfileFromAuthUser,
   ensureSupabaseSession,
   fetchSupabaseCatalog,
   fetchSupabaseOrders,
   getOrCreateActiveCartId,
   isSupabaseConfigured,
+  logUserActivity,
   searchSupabaseProducts,
   supabase,
+  syncUserProfile,
+  updateUserProfile,
 } from '../lib/supabase';
 import { LANGUAGES, t } from '../nlu/i18n';
 import { understand } from '../nlu/nluRouter';
@@ -27,6 +31,7 @@ import type {
   Product,
   ProductRef,
   RouteName,
+  UserProfile,
   VoiceGender,
   VoiceStatus,
 } from '../types';
@@ -109,6 +114,8 @@ interface VibeCartContextValue {
   authUserId: string | null;
   authMode: AuthMode;
   authEmail: string | null;
+  profile: UserProfile | null;
+  updateProfile: (patch: { fullName: string; phone: string }) => Promise<{ ok: boolean; message: string }>;
   signInWithGoogle: () => Promise<{ ok: boolean; message: string }>;
   signInWithMagicLink: (email: string) => Promise<{ ok: boolean; message: string }>;
   signOutSupabase: () => Promise<void>;
@@ -192,6 +199,7 @@ export const VibeCartProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [authUserId, setAuthUserId] = useState<string | null>(null);
   const [authMode, setAuthMode] = useState<AuthMode>('sandbox');
   const [authEmail, setAuthEmail] = useState<string | null>(null);
+  const [profile, setProfile] = useState<UserProfile | null>(null);
 
   const [route, setRoute] = useState<RouteName>(initialRoute.route);
   const [focusedProductId, setFocusedProductId] = useState<string>(
@@ -285,32 +293,40 @@ export const VibeCartProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   }, [authUserId]);
 
-  // Boot Supabase session, catalog hydration, user state, and Realtime subscription when configured
+  // Boot Supabase session, catalog hydration, user profile/state, and Realtime subscription
   useEffect(() => {
     if (!isSupabaseConfigured || !supabase) return;
 
     let cancelled = false;
+    let activeUserId: string | null = null;
 
-    const hydrateFromSupabase = async () => {
-      const remoteProducts = await fetchSupabaseCatalog();
-      if (!cancelled && remoteProducts && remoteProducts.length > 0) {
-        const byId = new Map(CATALOG.map((p) => [p.id, p]));
-        for (const rp of remoteProducts) {
-          byId.set(rp.id, rp);
-        }
-        const merged = Array.from(byId.values());
-        setProducts(merged);
-        setLastResults(merged);
-      }
+    const hydrateUserAccountData = async (userId: string) => {
+      if (!supabase || cancelled) return;
 
-      const userId = await ensureSupabaseSession();
-      if (cancelled || !userId || !supabase) return;
-
-      setAuthUserId(userId);
       const { data: userRes } = await supabase.auth.getUser();
       const user = userRes.user;
-      setAuthEmail(user?.email ?? null);
-      setAuthMode(user?.is_anonymous ? 'anonymous' : 'authenticated');
+      if (cancelled || !user) return;
+
+      setAuthUserId(user.id);
+      setAuthEmail(user.email ?? null);
+      setAuthMode(user.is_anonymous ? 'anonymous' : 'authenticated');
+
+      if (!user.is_anonymous) {
+        const immediate = buildProfileFromAuthUser(user, lang);
+        setProfile(immediate);
+
+        const synced = await syncUserProfile(user, lang);
+        if (!cancelled) {
+          setProfile(synced);
+          setCheckoutDraft((prev) => ({
+            ...prev,
+            name: prev.name || synced.fullName,
+            phone: prev.phone || synced.phone,
+          }));
+        }
+      } else {
+        setProfile(null);
+      }
 
       // Hydrate orders
       const remoteOrders = await fetchSupabaseOrders(userId);
@@ -367,17 +383,76 @@ export const VibeCartProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       }
     };
 
+    const hydrateFromSupabase = async () => {
+      const remoteProducts = await fetchSupabaseCatalog();
+      if (!cancelled && remoteProducts && remoteProducts.length > 0) {
+        const byId = new Map(CATALOG.map((p) => [p.id, p]));
+        for (const rp of remoteProducts) {
+          byId.set(rp.id, rp);
+        }
+        const merged = Array.from(byId.values());
+        setProducts(merged);
+        setLastResults(merged);
+      }
+
+      const userId = await ensureSupabaseSession();
+      if (cancelled || !userId) return;
+      activeUserId = userId;
+      await hydrateUserAccountData(userId);
+    };
+
     hydrateFromSupabase();
 
-    const { data: authSub } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: authSub } = supabase.auth.onAuthStateChange((event, session) => {
       if (session?.user) {
-        setAuthUserId(session.user.id);
-        setAuthEmail(session.user.email ?? null);
-        setAuthMode(session.user.is_anonymous ? 'anonymous' : 'authenticated');
+        const user = session.user;
+        activeUserId = user.id;
+        setAuthUserId(user.id);
+        setAuthEmail(user.email ?? null);
+        setAuthMode(user.is_anonymous ? 'anonymous' : 'authenticated');
+
+        if (!user.is_anonymous) {
+          const immediate = buildProfileFromAuthUser(user, lang);
+          setProfile(immediate);
+          syncUserProfile(user, lang).then((synced) => {
+            if (!cancelled) {
+              setProfile(synced);
+              setCheckoutDraft((prev) => ({
+                ...prev,
+                name: prev.name || synced.fullName,
+                phone: prev.phone || synced.phone,
+              }));
+            }
+          });
+
+          if (event === 'SIGNED_IN') {
+            logUserActivity(user.id, 'sign_in', {
+              email: user.email ?? '',
+              provider: String(user.app_metadata?.provider ?? 'oauth'),
+            });
+            hydrateUserAccountData(user.id);
+          }
+
+          try {
+            const postAuth = sessionStorage.getItem('vc_post_auth_route');
+            const hasOAuthHash =
+              window.location.hash.includes('access_token=') ||
+              window.location.hash.includes('refresh_token=');
+            if (postAuth === 'profile' || hasOAuthHash) {
+              sessionStorage.removeItem('vc_post_auth_route');
+              setRoute('profile');
+              window.location.hash = '#/profile';
+            }
+          } catch {
+            // Ignore storage errors
+          }
+        }
       } else {
+        activeUserId = null;
         setAuthUserId(null);
         setAuthEmail(null);
         setAuthMode('sandbox');
+        setProfile(null);
       }
     });
 
@@ -395,8 +470,8 @@ export const VibeCartProvider: React.FC<{ children: React.ReactNode }> = ({ chil
               text: `Live order update: ${status.replace(/_/g, ' ')}`,
             });
           }
-          if (authUserId) {
-            fetchSupabaseOrders(authUserId).then((next) => {
+          if (activeUserId) {
+            fetchSupabaseOrders(activeUserId).then((next) => {
               if (next && next.length > 0) setOrders(next);
             });
           }
@@ -409,7 +484,7 @@ export const VibeCartProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       authSub.subscription.unsubscribe();
       supabase?.removeChannel(channel);
     };
-  }, [authUserId, pushChip]);
+  }, [pushChip]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Listen to browser hash navigation
   useEffect(() => {
@@ -858,14 +933,66 @@ export const VibeCartProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     [authUserId]
   );
 
+  const updateProfile = useCallback(
+    async (patch: { fullName: string; phone: string }): Promise<{ ok: boolean; message: string }> => {
+      const cleanName = patch.fullName.trim();
+      const cleanPhone = patch.phone.trim();
+      if (cleanName.length < 2) {
+        return { ok: false, message: 'Enter your full name (at least 2 characters).' };
+      }
+
+      setProfile((prev) =>
+        prev
+          ? { ...prev, fullName: cleanName, phone: cleanPhone }
+          : authUserId
+            ? {
+                id: authUserId,
+                email: authEmail ?? '',
+                fullName: cleanName,
+                phone: cleanPhone,
+                preferredLang: lang,
+              }
+            : null
+      );
+      setCheckoutDraft((prev) => ({
+        ...prev,
+        name: cleanName || prev.name,
+        phone: cleanPhone || prev.phone,
+      }));
+
+      if (isSupabaseConfigured && supabase && authUserId) {
+        const res = await updateUserProfile(authUserId, {
+          fullName: cleanName,
+          phone: cleanPhone,
+          email: authEmail ?? undefined,
+          avatarUrl: profile?.avatarUrl,
+          preferredLang: lang,
+        });
+        if (!res.ok) {
+          return { ok: false, message: res.error ?? 'Could not save profile to database.' };
+        }
+        await logUserActivity(authUserId, 'profile_updated', { fullName: cleanName });
+      }
+
+      pushChip({ type: 'success', text: 'Personal information saved' });
+      return { ok: true, message: 'Personal information saved.' };
+    },
+    [authEmail, authUserId, lang, profile?.avatarUrl, pushChip]
+  );
+
   const signInWithGoogle = useCallback(async (): Promise<{ ok: boolean; message: string }> => {
     if (!isSupabaseConfigured || !supabase) {
       return { ok: false, message: 'Configure Supabase env vars to enable Google Sign-In.' };
     }
+    try {
+      sessionStorage.setItem('vc_post_auth_route', 'profile');
+    } catch {
+      // Ignore storage errors
+    }
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: `${window.location.origin}/#/profile`,
+        redirectTo: window.location.origin,
       },
     });
     if (error) {
@@ -886,6 +1013,11 @@ export const VibeCartProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       if (!trimmed || !trimmed.includes('@')) {
         return { ok: false, message: 'Enter a valid email address.' };
       }
+      try {
+        sessionStorage.setItem('vc_post_auth_route', 'profile');
+      } catch {
+        // Ignore storage errors
+      }
       const { error } = await supabase.auth.signInWithOtp({
         email: trimmed,
         options: { emailRedirectTo: window.location.origin },
@@ -900,10 +1032,16 @@ export const VibeCartProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const signOutSupabase = useCallback(async () => {
     if (!isSupabaseConfigured || !supabase) return;
+    if (authUserId) {
+      await logUserActivity(authUserId, 'sign_out');
+    }
     await supabase.auth.signOut();
-    await ensureSupabaseSession();
-    pushChip({ type: 'info', text: 'Signed out. Restored guest session.' });
-  }, [pushChip]);
+    setProfile(null);
+    setAuthUserId(null);
+    setAuthEmail(null);
+    setAuthMode('sandbox');
+    pushChip({ type: 'info', text: 'Signed out successfully.' });
+  }, [authUserId, pushChip]);
 
   const resolveRef = useCallback(
     (ref?: ProductRef): Product | null => {
@@ -1406,6 +1544,8 @@ export const VibeCartProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     authUserId,
     authMode,
     authEmail,
+    profile,
+    updateProfile,
     signInWithGoogle,
     signInWithMagicLink,
     signOutSupabase,

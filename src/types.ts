@@ -16,11 +16,26 @@ export type ProductPreset =
   | 'smartwatch'
   | 'speaker'
   | 'sneakers'
-  | 'keyboard';
+  | 'keyboard'
+  | 'camera'
+  | 'glasses'
+  | 'powerbank'
+  | 'lamp'
+  | 'backpack'
+  | 'mouse';
 
 export interface ProductVariant {
   name: string;
   hex: string;
+}
+
+export interface UserProfile {
+  id: string;
+  email: string;
+  fullName: string;
+  phone: string;
+  avatarUrl?: string;
+  preferredLang: LangCode;
 }
 
 export interface Product {
@@ -28,7 +43,15 @@ export interface Product {
   dbUuid?: string;
   title: string;
   brand: string;
-  category: 'audio' | 'wearables' | 'smart-home' | 'footwear' | 'peripherals';
+  category:
+    | 'audio'
+    | 'wearables'
+    | 'smart-home'
+    | 'footwear'
+    | 'peripherals'
+    | 'cameras'
+    | 'eyewear'
+    | 'accessories';
   categoryLabel: string;
   description: string;
   price: number;

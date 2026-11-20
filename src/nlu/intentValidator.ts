@@ -38,6 +38,9 @@ const VALID_CATEGORIES: Set<Product['category']> = new Set([
   'smart-home',
   'footwear',
   'peripherals',
+  'cameras',
+  'eyewear',
+  'accessories',
 ]);
 
 const VALID_LANGS: Set<LangCode> = new Set(['en-IN', 'hi-IN', 'kn-IN', 'ta-IN', 'te-IN']);

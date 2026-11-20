@@ -213,6 +213,101 @@ export function buildProceduralProduct(preset: ProductPreset, accentHex: string)
     group.traverse((c) => {
       if ((c as THREE.Mesh).isMesh) c.castShadow = true;
     });
+  } else if (preset === 'camera') {
+    const body = new THREE.Mesh(new THREE.BoxGeometry(1.15, 0.78, 0.44), darkMatte);
+    body.position.set(0, 0.41, 0);
+    const lensBarrel = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.3, 0.24, 32), brushedMetal);
+    lensBarrel.rotation.x = Math.PI / 2;
+    lensBarrel.position.set(0.14, 0.41, 0.28);
+    const copperRing = new THREE.Mesh(new THREE.TorusGeometry(0.26, 0.025, 14, 32), warmAccent);
+    copperRing.position.set(0.14, 0.41, 0.4);
+    const lensGlass = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.04, 32), glossyGlass);
+    lensGlass.rotation.x = Math.PI / 2;
+    lensGlass.position.set(0.14, 0.41, 0.39);
+    const shutterBtn = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.06, 20), warmAccent);
+    shutterBtn.position.set(-0.34, 0.82, 0.04);
+    group.add(body, lensBarrel, copperRing, lensGlass, shutterBtn);
+    group.traverse((c) => {
+      if ((c as THREE.Mesh).isMesh) c.castShadow = true;
+    });
+  } else if (preset === 'glasses') {
+    const frameBar = new THREE.Mesh(new THREE.BoxGeometry(1.42, 0.08, 0.08), darkMatte);
+    frameBar.position.set(0, 0.56, 0.35);
+    const makeLens = (side: -1 | 1) => {
+      const lens = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.26, 0.05, 24), glossyGlass);
+      lens.rotation.x = Math.PI / 2;
+      lens.scale.set(1.1, 1, 0.86);
+      lens.position.set(side * 0.36, 0.42, 0.36);
+      const temple = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.1, 1.15), darkMatte);
+      temple.position.set(side * 0.68, 0.52, -0.2);
+      const hinge = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.11, 0.14), warmAccent);
+      hinge.position.set(side * 0.68, 0.52, 0.34);
+      return [lens, temple, hinge];
+    };
+    group.add(frameBar, ...makeLens(-1), ...makeLens(1));
+    group.traverse((c) => {
+      if ((c as THREE.Mesh).isMesh) c.castShadow = true;
+    });
+  } else if (preset === 'powerbank') {
+    const slab = new THREE.Mesh(new THREE.BoxGeometry(0.84, 1.18, 0.24), darkMatte);
+    slab.position.set(0, 0.61, 0);
+    slab.rotation.x = -0.22;
+    const magRing = new THREE.Mesh(new THREE.TorusGeometry(0.26, 0.025, 14, 32), warmAccent);
+    magRing.position.set(0, 0.72, 0.11);
+    magRing.rotation.x = -0.22;
+    const oledScreen = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, 0.03, 24), glossyGlass);
+    oledScreen.rotation.x = Math.PI / 2 - 0.22;
+    oledScreen.position.set(0, 0.36, 0.19);
+    const sideTrim = new THREE.Mesh(new THREE.BoxGeometry(0.88, 1.21, 0.12), brushedMetal);
+    sideTrim.position.set(0, 0.61, 0);
+    sideTrim.rotation.x = -0.22;
+    group.add(sideTrim, slab, magRing, oledScreen);
+    group.traverse((c) => {
+      if ((c as THREE.Mesh).isMesh) c.castShadow = true;
+    });
+  } else if (preset === 'lamp') {
+    const base = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.34, 0.14, 32), darkMatte);
+    base.position.set(0.42, 0.07, 0.25);
+    const dialGlow = new THREE.Mesh(new THREE.TorusGeometry(0.28, 0.02, 12, 32), warmAccent);
+    dialGlow.rotation.x = Math.PI / 2;
+    dialGlow.position.set(0.42, 0.145, 0.25);
+    const stand = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.92, 16), brushedMetal);
+    stand.position.set(-0.2, 0.46, -0.2);
+    const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 1.65, 24), darkMatte);
+    bar.rotation.z = Math.PI / 2;
+    bar.position.set(-0.1, 0.94, -0.05);
+    const diffuser = new THREE.Mesh(new THREE.BoxGeometry(1.52, 0.04, 0.08), warmAccent);
+    diffuser.position.set(-0.1, 0.87, -0.05);
+    group.add(base, dialGlow, stand, bar, diffuser);
+    group.traverse((c) => {
+      if ((c as THREE.Mesh).isMesh) c.castShadow = true;
+    });
+  } else if (preset === 'backpack') {
+    const mainPack = new THREE.Mesh(new THREE.BoxGeometry(1.05, 0.85, 0.56), darkMatte);
+    mainPack.position.set(0, 0.45, 0);
+    const frontPocket = new THREE.Mesh(new THREE.BoxGeometry(0.92, 0.54, 0.14), brushedMetal);
+    frontPocket.position.set(0, 0.36, 0.32);
+    const buckle = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.22, 0.08), warmAccent);
+    buckle.position.set(0, 0.48, 0.41);
+    const handle = new THREE.Mesh(new THREE.TorusGeometry(0.2, 0.04, 12, 24, Math.PI), darkMatte);
+    handle.position.set(0, 0.88, 0);
+    group.add(mainPack, frontPocket, buckle, handle);
+    group.traverse((c) => {
+      if ((c as THREE.Mesh).isMesh) c.castShadow = true;
+    });
+  } else if (preset === 'mouse') {
+    const shell = new THREE.Mesh(new THREE.SphereGeometry(0.46, 24, 18), darkMatte);
+    shell.scale.set(0.82, 0.56, 1.38);
+    shell.position.set(0, 0.22, 0);
+    const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.07, 20), warmAccent);
+    wheel.rotation.z = Math.PI / 2;
+    wheel.position.set(0, 0.36, 0.36);
+    const baseSkates = new THREE.Mesh(new THREE.BoxGeometry(0.68, 0.04, 1.15), brushedMetal);
+    baseSkates.position.set(0, 0.03, 0);
+    group.add(baseSkates, shell, wheel);
+    group.traverse((c) => {
+      if ((c as THREE.Mesh).isMesh) c.castShadow = true;
+    });
   } else {
     // Mechanical keyboard
     const chassis = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.14, 0.86), brushedMetal);

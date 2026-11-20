@@ -1,5 +1,14 @@
-import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import type { Address, Order, OrderEvent, OrderStatus, Product, ProductPreset } from '../types';
+import { createClient, type SupabaseClient, type User } from '@supabase/supabase-js';
+import type {
+  Address,
+  LangCode,
+  Order,
+  OrderEvent,
+  OrderStatus,
+  Product,
+  ProductPreset,
+  UserProfile,
+} from '../types';
 
 const supabaseUrl = (import.meta.env.VITE_SUPABASE_URL ?? '').trim();
 const supabaseAnonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY ?? '').trim();
@@ -14,6 +23,7 @@ export const supabase: SupabaseClient | null = isSupabaseConfigured
       auth: {
         persistSession: true,
         autoRefreshToken: true,
+        detectSessionInUrl: true,
       },
     })
   : null;
@@ -25,6 +35,12 @@ const VALID_PRESETS: ProductPreset[] = [
   'speaker',
   'sneakers',
   'keyboard',
+  'camera',
+  'glasses',
+  'powerbank',
+  'lamp',
+  'backpack',
+  'mouse',
 ];
 
 const VALID_CATEGORIES: Product['category'][] = [
@@ -33,6 +49,9 @@ const VALID_CATEGORIES: Product['category'][] = [
   'smart-home',
   'footwear',
   'peripherals',
+  'cameras',
+  'eyewear',
+  'accessories',
 ];
 
 // Map Postgres product row into frontend Product shape
@@ -218,4 +237,135 @@ export async function fetchSupabaseOrders(userId: string): Promise<Order[] | nul
       createdAt: String(row.created_at),
     };
   });
+}
+
+export function buildProfileFromAuthUser(
+  user: User,
+  fallbackLang: LangCode = 'en-IN'
+): UserProfile {
+  const meta = (user.user_metadata ?? {}) as Record<string, unknown>;
+  const email = user.email ?? (typeof meta.email === 'string' ? meta.email : '') ?? '';
+  const metaName =
+    (typeof meta.full_name === 'string' && meta.full_name.trim()) ||
+    (typeof meta.name === 'string' && meta.name.trim()) ||
+    (email ? email.split('@')[0] : '');
+  const avatarUrl =
+    (typeof meta.avatar_url === 'string' && meta.avatar_url.trim()) ||
+    (typeof meta.picture === 'string' && meta.picture.trim()) ||
+    undefined;
+
+  return {
+    id: user.id,
+    email,
+    fullName: metaName,
+    phone: user.phone ?? '',
+    avatarUrl,
+    preferredLang: fallbackLang,
+  };
+}
+
+export async function syncUserProfile(
+  user: User,
+  fallbackLang: LangCode = 'en-IN'
+): Promise<UserProfile> {
+  const baseProfile = buildProfileFromAuthUser(user, fallbackLang);
+  if (!supabase || user.is_anonymous) return baseProfile;
+
+  try {
+    const { data: existing } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', user.id)
+      .maybeSingle();
+
+    if (existing) {
+      const merged: UserProfile = {
+        id: user.id,
+        email: (typeof existing.email === 'string' && existing.email) || baseProfile.email,
+        fullName:
+          (typeof existing.full_name === 'string' && existing.full_name.trim()) ||
+          baseProfile.fullName,
+        phone: (typeof existing.phone === 'string' && existing.phone.trim()) || baseProfile.phone,
+        avatarUrl:
+          (typeof existing.avatar_url === 'string' && existing.avatar_url.trim()) ||
+          baseProfile.avatarUrl,
+        preferredLang:
+          (typeof existing.preferred_lang === 'string' && existing.preferred_lang)
+            ? (existing.preferred_lang as LangCode)
+            : fallbackLang,
+      };
+      return merged;
+    }
+
+    // Create initial profile row if missing
+    const { error: extErr } = await supabase.from('profiles').upsert({
+      id: user.id,
+      full_name: baseProfile.fullName || null,
+      phone: baseProfile.phone || null,
+      preferred_lang: baseProfile.preferredLang,
+      email: baseProfile.email || null,
+      avatar_url: baseProfile.avatarUrl || null,
+    });
+    if (extErr) {
+      await supabase.from('profiles').upsert({
+        id: user.id,
+        full_name: baseProfile.fullName || null,
+        phone: baseProfile.phone || null,
+        preferred_lang: baseProfile.preferredLang,
+      });
+    }
+  } catch {
+    // Keep metadata-derived profile even if table columns aren't migrated yet
+  }
+
+  return baseProfile;
+}
+
+export async function updateUserProfile(
+  userId: string,
+  patch: {
+    fullName?: string;
+    phone?: string;
+    email?: string;
+    avatarUrl?: string;
+    preferredLang?: LangCode;
+  }
+): Promise<{ ok: boolean; error?: string }> {
+  if (!supabase) return { ok: false, error: 'Supabase is not configured.' };
+
+  const basePayload: Record<string, unknown> = { id: userId };
+  if (patch.fullName !== undefined) basePayload.full_name = patch.fullName.trim();
+  if (patch.phone !== undefined) basePayload.phone = patch.phone.trim();
+  if (patch.preferredLang !== undefined) basePayload.preferred_lang = patch.preferredLang;
+
+  const extendedPayload: Record<string, unknown> = {
+    ...basePayload,
+    ...(patch.email !== undefined ? { email: patch.email.trim() } : {}),
+    ...(patch.avatarUrl !== undefined ? { avatar_url: patch.avatarUrl.trim() } : {}),
+  };
+
+  const { error } = await supabase.from('profiles').upsert(extendedPayload);
+  if (!error) return { ok: true };
+
+  // Fallback for projects that haven't run 002_profile_logs_and_new_products.sql yet
+  const { error: fallbackErr } = await supabase.from('profiles').upsert(basePayload);
+  if (fallbackErr) return { ok: false, error: fallbackErr.message };
+  return { ok: true };
+}
+
+export async function logUserActivity(
+  userId: string | null,
+  eventType: string,
+  details: Record<string, unknown> = {}
+): Promise<void> {
+  if (!supabase || !userId) return;
+  try {
+    await supabase.from('user_activity_logs').insert({
+      user_id: userId,
+      event_type: eventType,
+      details,
+    });
+  } catch {
+    // Gracefully skip if logs table is not yet created
+  }
 }

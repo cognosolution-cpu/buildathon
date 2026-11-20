@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Cloud, Globe, Layers, LogOut, Mail, MapPin, Shield, Volume2 } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Check, Cloud, Globe, Layers, LogOut, Mail, MapPin, Shield, User, Volume2 } from 'lucide-react';
 import { isSupabaseConfigured } from '../lib/supabase';
 import { LANGUAGES } from '../nlu/i18n';
 import { useVibeCart } from '../state/store';
@@ -18,6 +18,8 @@ export const ProfileScreen: React.FC = () => {
     pushChip,
     authMode,
     authEmail,
+    profile,
+    updateProfile,
     signInWithGoogle,
     signInWithMagicLink,
     signOutSupabase,
@@ -26,6 +28,16 @@ export const ProfileScreen: React.FC = () => {
   const [emailInput, setEmailInput] = useState('');
   const [authMessage, setAuthMessage] = useState('');
   const [sendingLink, setSendingLink] = useState(false);
+
+  const [fullNameInput, setFullNameInput] = useState(profile?.fullName ?? '');
+  const [phoneInput, setPhoneInput] = useState(profile?.phone ?? '');
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [profileMessage, setProfileMessage] = useState('');
+
+  useEffect(() => {
+    setFullNameInput(profile?.fullName ?? '');
+    setPhoneInput(profile?.phone ?? '');
+  }, [profile]);
 
   const handleMagicLink = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -36,6 +48,14 @@ export const ProfileScreen: React.FC = () => {
     if (res.ok) setEmailInput('');
   };
 
+  const handleSaveProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSavingProfile(true);
+    const res = await updateProfile({ fullName: fullNameInput, phone: phoneInput });
+    setSavingProfile(false);
+    setProfileMessage(res.message);
+  };
+
   return (
     <div className="space-y-6 max-w-3xl">
       <div>
@@ -43,25 +63,38 @@ export const ProfileScreen: React.FC = () => {
           Profile, Sign In & Settings
         </h1>
         <p className="text-sm text-[#9A9A9A] mt-1">
-          Sign in to sync orders and addresses, or customize your voice assistant and 3D view.
+          Sign in to view your personal information, sync orders and addresses, or customize voice settings.
         </p>
       </div>
 
       {/* Account & Cloud Sync */}
       <section className="rounded-[20px] vc-glass p-6 space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-2.5">
-            <Cloud className="w-5 h-5 text-[#2EE59D]" />
+          <div className="flex items-center gap-3">
+            {authMode === 'authenticated' && profile?.avatarUrl ? (
+              <img
+                src={profile.avatarUrl}
+                alt={profile.fullName || 'Account avatar'}
+                referrerPolicy="no-referrer"
+                className="w-11 h-11 rounded-full object-cover border border-white/20 shrink-0"
+              />
+            ) : (
+              <div className="w-11 h-11 rounded-full bg-white/5 border border-white/10 flex items-center justify-center shrink-0">
+                <Cloud className="w-5 h-5 text-[#2EE59D]" />
+              </div>
+            )}
             <div>
               <h2 className="font-display text-lg font-semibold text-[#F5F5F5]">
-                Account & Order Sync
+                {authMode === 'authenticated'
+                  ? profile?.fullName || authEmail || 'Signed-in Account'
+                  : 'Account & Order Sync'}
               </h2>
               <p className="text-xs text-[#9A9A9A]">
-                {authMode === 'authenticated' && authEmail
-                  ? `Signed in as ${authEmail} · Orders & cart synced across devices`
+                {authMode === 'authenticated' && (profile?.email || authEmail)
+                  ? `Signed in as ${profile?.email || authEmail} · Orders & profile synced`
                   : authMode === 'anonymous'
-                    ? 'Active Guest Cloud Session · Cart & live order tracking synced to Supabase'
-                    : 'Local Preview Session · Persisted in browser storage'}
+                    ? 'Active Guest Cloud Session · Sign in to save personal details'
+                    : 'Not signed in yet · Sign in with Google or email link below'}
               </p>
             </div>
           </div>
@@ -134,6 +167,80 @@ export const ProfileScreen: React.FC = () => {
           </div>
         )}
         {authMessage && <p className="text-xs text-[#FFA040]">{authMessage}</p>}
+      </section>
+
+      {/* Personal Information */}
+      <section className="rounded-[20px] vc-glass p-6 space-y-4">
+        <div className="flex items-center gap-2.5">
+          <User className="w-5 h-5 text-[#FF6A00]" />
+          <h2 className="font-display text-lg font-semibold text-[#F5F5F5]">
+            Personal Information
+          </h2>
+        </div>
+
+        {authMode === 'authenticated' ? (
+          <form onSubmit={handleSaveProfile} className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label htmlFor="personal-name" className="block text-xs font-medium text-[#9A9A9A] mb-1.5">
+                  Full Name
+                </label>
+                <input
+                  id="personal-name"
+                  type="text"
+                  value={fullNameInput}
+                  onChange={(e) => setFullNameInput(e.target.value)}
+                  placeholder="Your full name"
+                  className="w-full h-11 px-3.5 rounded-[14px] bg-[#0B0B0B] border border-white/10 text-sm text-[#F5F5F5] focus:outline-none focus:border-[#FF6A00]"
+                />
+              </div>
+              <div>
+                <label htmlFor="personal-phone" className="block text-xs font-medium text-[#9A9A9A] mb-1.5">
+                  Mobile Number
+                </label>
+                <input
+                  id="personal-phone"
+                  type="tel"
+                  value={phoneInput}
+                  onChange={(e) => setPhoneInput(e.target.value)}
+                  placeholder="9876543210"
+                  className="w-full h-11 px-3.5 rounded-[14px] bg-[#0B0B0B] border border-white/10 text-sm text-[#F5F5F5] font-mono-num focus:outline-none focus:border-[#FF6A00]"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label htmlFor="personal-email" className="block text-xs font-medium text-[#9A9A9A] mb-1.5">
+                Email Address (Verified Account)
+              </label>
+              <input
+                id="personal-email"
+                type="email"
+                readOnly
+                value={profile?.email || authEmail || ''}
+                className="w-full h-11 px-3.5 rounded-[14px] bg-[#0B0B0B]/70 border border-white/10 text-sm text-[#9A9A9A] cursor-not-allowed"
+              />
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                type="submit"
+                disabled={savingProfile}
+                className="h-11 px-5 rounded-[14px] bg-white text-[#050505] text-xs font-semibold hover:bg-[#F5F5F5] inline-flex items-center gap-2 disabled:opacity-60 cursor-pointer"
+              >
+                <Check className="w-4 h-4" />
+                <span>{savingProfile ? 'Saving...' : 'Save Personal Info'}</span>
+              </button>
+              {profileMessage && (
+                <span className="text-xs text-[#2EE59D]">{profileMessage}</span>
+              )}
+            </div>
+          </form>
+        ) : (
+          <p className="text-xs text-[#9A9A9A]">
+            Sign in with Google or an email magic link above to view and update your personal details.
+          </p>
+        )}
       </section>
 
       {/* Language Switcher */}

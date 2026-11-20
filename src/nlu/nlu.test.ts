@@ -176,3 +176,17 @@ test('ruleParse and validateParsedIntent handle checkout field filling and chain
   assert.equal(validated.parsed.entities.submitPayment, true);
   assert.equal(validated.parsed.followUpActions?.[0]?.intent, 'CHECKOUT');
 });
+
+test('new distinct product categories and searchCatalog work accurately', () => {
+  assert.equal(ruleParse('Show 4k action camera under 10000').entities.category, 'cameras');
+  assert.equal(ruleParse('Find smart glasses').entities.category, 'eyewear');
+  assert.equal(ruleParse('Show magsafe power bank').entities.category, 'accessories');
+
+  const cams = searchCatalog({ category: 'cameras' });
+  assert.ok(cams.some((p) => p.id === 'vc-camera-pocket'));
+  const eyewear = searchCatalog({ category: 'eyewear' });
+  assert.ok(eyewear.some((p) => p.id === 'vc-glasses-spectra'));
+  const carry = searchCatalog({ category: 'accessories' });
+  assert.ok(carry.length >= 2);
+});
+
