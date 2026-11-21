@@ -25,7 +25,11 @@ function getAgoraCredentials() {
 }
 
 function getGeminiApiKey(): string {
-  const apiKey = (process.env.GEMINI_API_KEY || '').trim();
+  const apiKey = (
+    process.env.GEMINI_API_KEY ||
+    process.env.GOOGLE_GENERATIVE_AI_API_KEY ||
+    ''
+  ).trim();
   if (!apiKey || apiKey === 'MY_GEMINI_API_KEY') return '';
   return apiKey;
 }
@@ -234,7 +238,12 @@ export function handleAgoraToken(body: Record<string, unknown>): HandlerResult {
 }
 
 async function resolveAgoraGeminiModel(geminiKey: string): Promise<string> {
-  const candidates = ['gemini-3.1-flash-lite', 'gemini-2.5-flash', 'gemini-4-hydrogen'];
+  const override = (process.env.GEMINI_AGORA_MODEL || '').trim();
+  const candidates = Array.from(
+    new Set(
+      [override, 'gemini-3.1-flash-lite', 'gemini-4-hydrogen', 'gemini-2.5-flash'].filter(Boolean)
+    )
+  );
   for (const candidate of candidates) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 1500);
@@ -245,6 +254,9 @@ async function resolveAgoraGeminiModel(geminiKey: string): Promise<string> {
       );
       if (res.ok) {
         return candidate;
+      }
+      if (res.status === 429) {
+        continue;
       }
       if (res.status === 401 || res.status === 403) {
         return candidate;
@@ -323,9 +335,14 @@ export async function handleAgoraStart(body: Record<string, unknown>): Promise<H
     'te-IN': 'క్షమించండి, అది సరిగ్గా వినిపించలేదు. దయచేసి మళ్లీ చెప్పండి.',
   };
 
+  const asrLanguages = Array.from(
+    new Set([voice.asrLanguage, 'en-IN', 'hi-IN', 'kn-IN', 'ta-IN', 'te-IN'])
+  ).join(',');
+
   const systemPrompt = `You are VoicoCart's live conversational shopping assistant powered by Agora Voice AI and Murf Falcon 2.
-Speak naturally and concisely (under 24 words per reply) in the shopper's language (${lang}). Never use markdown bullets or emojis in spoken text.
+Auto-detect the language the shopper speaks (English, Hindi/Hinglish, Kannada, Tamil, or Telugu) and reply naturally in that same language (default to ${lang} if unclear). Keep replies concise (under 24 words) with no markdown bullets or emojis.
 Important: The VoicoCart app automatically executes navigation, cart additions/removals, product comparisons, 2D/3D view toggling, saving profile details & delivery addresses, checkout form filling, and payment triggers in real time as the shopper speaks.
+When confirming cart actions, only acknowledge the single product and exact quantity requested (default quantity 1). Never claim to add extra items or multiple products unless explicitly asked.
 Never claim there was a technical issue or say you cannot access the cart, profile, saved addresses, or checkout form.
 Store catalog (prices in Indian Rupees):
 ${catalogSummary}
@@ -355,7 +372,7 @@ On checkout or profile, help fill and save name, 10-digit mobile, street address
             },
             asr: {
               vendor: 'ares',
-              language: voice.asrLanguage,
+              language: asrLanguages,
             },
             llm: {
               url: `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:streamGenerateContent?alt=sse&key=${encodeURIComponent(geminiKey)}`,
@@ -691,6 +708,7 @@ Extraction rules:
 - Use TOGGLE_SIMPLE_VIEW when the user asks to turn on/off Simple View or switch between 2D studio photos (simpleView=true) and 3D view (simpleView=false).
 - Use NAVIGATE with targetRoute (home, results, product, compare, cart, checkout, orders, profile) when the user asks to go to or open a page.
 - Use followUpActions if the user asks for multiple actions in one turn (e.g., ADD_TO_CART followed by CHECKOUT, or FILL_CHECKOUT followed by CHECKOUT).
+- For ADD_TO_CART, set entities.quantity to the exact requested integer (default 1; never guess higher). Distinguish product index/ordinal (e.g. "the second one", "item 2" -> productRef.index=2, quantity=1) and model numbers (e.g. "StrideLab Tempo Knit 2", "140W", "4K", "TB4" -> quantity=1) from item counts (e.g. "two PulseBuds", "3 of the second one", "only one" -> quantity=2/3/1). Never emit ADD_TO_CART on negative/complaint phrases like "don't add" or "why did you add".
 - Only populate entities.reason when intent is RETURN_ITEM.
 Context:
 - current screen: ${String(context.screen ?? 'home')}
@@ -699,31 +717,56 @@ Context:
 - visible numbered products: ${JSON.stringify(context.visibleProducts ?? [])}
 Keep replyHint brief (max 18 words) in the user's preferred language or the language they spoke.`;
 
-  try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-3.1-flash-lite',
-      contents: transcript,
-      config: {
-        systemInstruction,
-        responseMimeType: 'application/json',
-        responseSchema: NLU_RESPONSE_SCHEMA,
-        thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL },
-      },
-    });
+  const modelAttempts: Array<{ model: string; thinkingLevel?: ThinkingLevel }> = [
+    { model: 'gemini-3.1-flash-lite', thinkingLevel: ThinkingLevel.MINIMAL },
+    { model: 'gemini-4-hydrogen', thinkingLevel: ThinkingLevel.LOW },
+    { model: 'gemini-2.5-flash' },
+  ];
 
-    const rawJson = (response.text ?? '').trim();
-    if (!rawJson) {
-      return { status: 502, data: { error: 'Empty response from Gemini NLU.' } };
+  let lastErr: unknown = null;
+  for (const attempt of modelAttempts) {
+    try {
+      const response = await ai.models.generateContent({
+        model: attempt.model,
+        contents: transcript,
+        config: {
+          systemInstruction,
+          responseMimeType: 'application/json',
+          responseSchema: NLU_RESPONSE_SCHEMA,
+          ...(attempt.thinkingLevel
+            ? { thinkingConfig: { thinkingLevel: attempt.thinkingLevel } }
+            : {}),
+        },
+      });
+
+      const rawJson = (response.text ?? '').trim();
+      if (!rawJson) {
+        continue;
+      }
+      const parsed = JSON.parse(rawJson) as Record<string, unknown>;
+      return { status: 200, data: parsed };
+    } catch (err) {
+      lastErr = err;
+      const errMsg = err instanceof Error ? err.message : String(err);
+      const isRetryable =
+        /429|RESOURCE_EXHAUSTED|quota|404|NOT_FOUND|503|UNAVAILABLE/i.test(errMsg);
+      if (!isRetryable) {
+        break;
+      }
     }
-    const parsed = JSON.parse(rawJson) as Record<string, unknown>;
-    return { status: 200, data: parsed };
-  } catch (err) {
-    console.error('[/api/nlu] Gemini error:', err);
-    return {
-      status: 502,
-      data: { error: err instanceof Error ? err.message : 'Failed to parse intent via Gemini.' },
-    };
   }
+
+  console.error('[/api/nlu] Gemini error:', lastErr);
+  const message = lastErr instanceof Error ? lastErr.message : 'Failed to parse intent via Gemini.';
+  const status = /429|RESOURCE_EXHAUSTED|quota/i.test(message)
+    ? 429
+    : /401|403|PERMISSION_DENIED|API_KEY_INVALID|UNAUTHENTICATED/i.test(message)
+      ? 403
+      : 502;
+  return {
+    status,
+    data: { error: message },
+  };
 }
 
 type VercelRequest = IncomingMessage & { body?: unknown };

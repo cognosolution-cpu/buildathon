@@ -164,18 +164,33 @@ export function createSpeechRecognizer(cb: RecognizerCallbacks) {
   rec.interimResults = true;
   rec.continuous = false;
 
+  let lastFinalNormalized = '';
+  let lastFinalAt = 0;
+
   rec.onstart = () => cb.onStart?.();
   rec.onend = () => cb.onEnd?.();
   rec.onerror = (ev) => cb.onError?.(ev.error ?? 'speech-error');
   rec.onresult = (ev) => {
     let interim = '';
+    const finalParts: string[] = [];
     for (let i = ev.resultIndex; i < ev.results.length; i++) {
       const res = ev.results[i];
-      const text = res[0]?.transcript ?? '';
+      const text = (res[0]?.transcript ?? '').trim();
+      if (!text) continue;
       if (res.isFinal) {
-        cb.onFinal?.(text.trim());
+        finalParts.push(text);
       } else {
-        interim += text;
+        interim += (interim ? ' ' : '') + text;
+      }
+    }
+    if (finalParts.length > 0) {
+      const finalText = finalParts.join(' ').trim();
+      const normalized = finalText.toLowerCase().replace(/\s+/g, ' ');
+      const now = Date.now();
+      if (normalized && !(normalized === lastFinalNormalized && now - lastFinalAt < 1500)) {
+        lastFinalNormalized = normalized;
+        lastFinalAt = now;
+        cb.onFinal?.(finalText);
       }
     }
     if (interim) cb.onInterim?.(interim);

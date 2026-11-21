@@ -82,7 +82,7 @@ function detectLangSwitch(text: string): LangCode | undefined {
 }
 
 const FILLER_PATTERN =
-  /\b(add|put|back|again|to|my|the|in|into|cart|basket|bag|please|buy|item|product|and|then|now|me|it)\b/gi;
+  /\b(add|put|back|again|to|my|the|in|into|cart|basket|bag|please|buy|item|items|product|products|and|then|now|me|it|only|just|quantity|qty|pcs|pieces?|units?)\b/gi;
 
 function cleanProductName(text: string): string {
   return text
@@ -91,6 +91,121 @@ function cleanProductName(text: string): string {
     .replace(/[.,!?।]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+const SMALL_QTY_TOKEN =
+  '(\\d{1,2}|one|two|three|four|five|six|seven|eight|nine|ten|एक|दो|तीन|चार|पांच|पाँच|ಒಂದು|ಎರಡು|ಮೂರು|ನಾಲ್ಕು|ಐದು)';
+
+function parseSmallQuantityToken(token: string): number | undefined {
+  const cleaned = token.trim().toLowerCase();
+  if (/^\d{1,2}$/.test(cleaned)) {
+    const n = Number(cleaned);
+    return n >= 1 ? Math.min(n, 10) : undefined;
+  }
+  const parsed = parseNumberWords(cleaned);
+  if (parsed !== undefined && parsed >= 1) {
+    return Math.min(parsed, 10);
+  }
+  return undefined;
+}
+
+function extractAddQuantityAndRef(normalizedText: string): {
+  quantity: number;
+  productRef: ProductRef;
+} {
+  const clause = normalizedText
+    .replace(/\b(?:and|then)\s+(?:go\s+to|open|redirect(?:\s+me)?\s+to|take\s+me\s+to|proceed\s+to|move\s+to)?\s*(?:check\s*out|cart|payment).*$/i, '')
+    .trim();
+
+  let working = clause;
+  let quantity = 1;
+  let hasExplicitQuantity = false;
+
+  const qtyPatterns: Array<{ re: RegExp; keepSuffix?: string }> = [
+    { re: new RegExp(`\\b(?:quantity|qty)\\s*(?:is|to|of|:|=)?\\s*${SMALL_QTY_TOKEN}\\b`, 'i') },
+    { re: new RegExp(`\\b${SMALL_QTY_TOKEN}\\s+(?:pcs|pieces?|items?|units?)\\b`, 'i') },
+    { re: new RegExp(`\\b(?:only|just)\\s+${SMALL_QTY_TOKEN}(?:\\s+(?:pcs|pieces?|items?|units?))?\\b(?!\\s*(?:st|nd|rd|th)\\b)`, 'i') },
+    { re: new RegExp(`\\b${SMALL_QTY_TOKEN}\\s+of\\s+(?:the|this|that|these|them|item|product)\\b`, 'i'), keepSuffix: 'the' },
+  ];
+
+  for (const { re, keepSuffix } of qtyPatterns) {
+    const m = working.match(re);
+    if (m?.[1]) {
+      const parsedQty = parseSmallQuantityToken(m[1]);
+      if (parsedQty !== undefined) {
+        quantity = parsedQty;
+        hasExplicitQuantity = true;
+        const suffix = keepSuffix && /\b(?:this|these|them)\b/i.test(m[0]) ? 'this' : keepSuffix;
+        working = working.replace(re, suffix ? ` ${suffix} ` : ' ').replace(/\s+/g, ' ').trim();
+        break;
+      }
+    }
+  }
+
+  if (!hasExplicitQuantity) {
+    const leadingQtyRe = new RegExp(
+      `(\\b(?:add|put|buy|get|give\\s+me)\\s+(?:me\\s+)?)${SMALL_QTY_TOKEN}\\s+(?!(?:and|or|to|in|into|on|for|back|from|my|the|cart|bag|basket|please|of|st|nd|rd|th)\\b)([a-z0-9\\u0900-\\u097F\\u0C80-\\u0CFF\\u0B80-\\u0BFF]{2,})`,
+      'i'
+    );
+    const leadMatch = working.match(leadingQtyRe);
+    if (leadMatch?.[2]) {
+      const parsedQty = parseSmallQuantityToken(leadMatch[2]);
+      if (parsedQty !== undefined) {
+        quantity = parsedQty;
+        hasExplicitQuantity = true;
+        working = working
+          .replace(leadingQtyRe, '$1$3')
+          .replace(/\s+/g, ' ')
+          .trim();
+      }
+    }
+  }
+
+  // 1. Strict ordinals ("first", "second one", "2nd", etc.)
+  for (const [word, idx] of STRICT_ORDINALS) {
+    const regex = new RegExp(`(?:^|\\s)(?:the\\s+)?${word}(?:\\s+one)?(?:\\s|$|[?.!,])`, 'i');
+    if (regex.test(working)) {
+      return { quantity, productRef: { index: idx } };
+    }
+  }
+
+  // 2. Explicit numbered reference ("item 2", "product 2", "number 2", "#2")
+  const explicitIdxMatch = working.match(/\b(?:number|item|product|#)\s*(\d+)\b/i);
+  if (explicitIdxMatch?.[1]) {
+    const n = Number(explicitIdxMatch[1]);
+    if (n >= 1 && n <= 12) {
+      return { quantity, productRef: { index: n } };
+    }
+  }
+
+  // 3. Pronouns referencing active/current product ("this", "it", "current")
+  if (/\b(this|it|current|ये|यह)\b/i.test(working)) {
+    return { quantity, productRef: { this: true } };
+  }
+
+  // 4. Bare numeric command with no product words ("add 2", "add 1")
+  const cleanedName = cleanProductName(working)
+    .replace(/\b(?:of|for)\b/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (/^\d{1,2}$/.test(cleanedName)) {
+    const n = Number(cleanedName);
+    if (n >= 1 && n <= 12) {
+      return { quantity, productRef: { index: n } };
+    }
+  }
+
+  if (cleanedName) {
+    return { quantity, productRef: { name: cleanedName } };
+  }
+
+  if (hasExplicitQuantity) {
+    return { quantity, productRef: { this: true } };
+  }
+
+  const fallbackRef = extractRef(working);
+  return { quantity, productRef: fallbackRef ?? { name: '' } };
 }
 
 function extractCheckoutEntities(raw: string): ParsedIntent['entities'] | null {
@@ -280,19 +395,22 @@ export function ruleParse(transcript: string): ParsedIntent {
     /\b(show|open|view|go\s+to|take\s+me\s+to|redirect(?:\s+me)?\s+to|check|what(?:'s|\s+is)\s+in)\s+(my\s+)?cart\b/i.test(
       t
     ) || /(मेरा\s*कार्ट|कार्ट\s*दिखाओ|ಕಾರ್ಟ್)/i.test(raw);
-  const wantsAdd = /\b(add|put|जोड़ो|डालो|ಸೇರಿಸಿ)\b/i.test(normalized);
+  const isNegativeOrComplaintAdd =
+    /\b(don'?t|do\s+not|never|not|stop|why\s+(?:did|do)\s+you|already|extra)\s+(?:add|added|put)\b/i.test(
+      normalized
+    ) || /\byou\s+added\b/i.test(normalized);
+  const wantsAdd =
+    !isNegativeOrComplaintAdd && /\b(add|put|जोड़ो|डालो|ಸೇರಿಸಿ)\b/i.test(normalized);
 
   if (wantsAdd && (wantsCheckout || wantsCartView)) {
-    const ref = extractRef(normalized) ?? { name: cleanProductName(normalized) };
+    const { productRef, quantity } = extractAddQuantityAndRef(normalized);
     const color = COLOR_WORDS.find((c) => t.includes(c));
-    const qtyMatch = t.match(/\b(\d+)\s*(?:pcs|pieces|items|units)?\b/);
-    const quantity = qtyMatch && !t.includes('number') ? Math.min(Number(qtyMatch[1]), 10) : 1;
     const followUp: ParsedIntent = wantsCheckout
       ? { intent: 'CHECKOUT', entities: {}, confidence: 0.95 }
       : { intent: 'SHOW_CART', entities: {}, confidence: 0.95 };
     return {
       intent: 'ADD_TO_CART',
-      entities: { productRef: ref, variant: color, quantity },
+      entities: { productRef, variant: color, quantity },
       confidence: 0.94,
       followUpActions: [followUp],
     };
@@ -417,12 +535,10 @@ export function ruleParse(transcript: string): ParsedIntent {
     };
   }
 
-  // 16. Add to Cart ("add the second one", "add PulseBuds Air ANC to my cart")
+  // 16. Add to Cart ("add the second one", "add 2 PulseBuds Air ANC to my cart")
   if (wantsAdd) {
-    const productRef = extractRef(normalized) ?? { name: cleanProductName(normalized) };
+    const { productRef, quantity } = extractAddQuantityAndRef(normalized);
     const color = COLOR_WORDS.find((c) => t.includes(c));
-    const qtyMatch = t.match(/\b(\d+)\s*(?:pcs|pieces|items|units)?\b/);
-    const quantity = qtyMatch && !t.includes('number') ? Math.min(Number(qtyMatch[1]), 10) : 1;
     return {
       intent: 'ADD_TO_CART',
       entities: { productRef, variant: color, quantity },

@@ -45,6 +45,7 @@ export async function understand(transcript: string, context: NluContext): Promi
   }
 
   // 3. Call server-side Gemini NLU endpoint (/api/nlu)
+  let nluStatusHint: string | undefined;
   try {
     const res = await fetch('/api/nlu', {
       method: 'POST',
@@ -60,6 +61,13 @@ export async function understand(transcript: string, context: NluContext): Promi
         replyHint: validated.replyHint,
       };
     }
+    if (res.status === 429) {
+      nluStatusHint =
+        'Gemini quota limit reached. Using local shopping commands or update GEMINI_API_KEY in Settings > Secrets.';
+    } else if (res.status === 401 || res.status === 403) {
+      nluStatusHint =
+        'Gemini API key was rejected. Please verify GEMINI_API_KEY in Settings > Secrets.';
+    }
   } catch {
     // Graceful fallback when offline or GEMINI_API_KEY not provided
   }
@@ -67,5 +75,6 @@ export async function understand(transcript: string, context: NluContext): Promi
   return {
     parsed: ruleResult,
     source: 'fallback',
+    ...(nluStatusHint ? { replyHint: nluStatusHint } : {}),
   };
 }

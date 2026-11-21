@@ -52,6 +52,7 @@ export class AgoraVoiceSession {
   private aborted = false;
   private chunkMap = new Map<string, ChunkAccumulator>();
   private processedTurnKeys = new Set<string>();
+  private recentFinalTexts = new Map<string, number>();
   private latestPendingUserTurn: { key: string; text: string } | null = null;
 
   isActive(): boolean {
@@ -124,6 +125,7 @@ export class AgoraVoiceSession {
       this.client = client;
       this.chunkMap.clear();
       this.processedTurnKeys.clear();
+      this.recentFinalTexts.clear();
       this.latestPendingUserTurn = null;
 
       client.on('user-published', async (user, mediaType) => {
@@ -218,12 +220,41 @@ export class AgoraVoiceSession {
     }
   }
 
+  private normalizeTranscript(text: string): string {
+    return text
+      .toLowerCase()
+      .replace(/[.,!?।]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
   private emitFinalUserTurn(key: string, text: string, callbacks: AgoraSessionCallbacks): void {
+    const normalized = this.normalizeTranscript(text);
+    if (!normalized) return;
+
     if (this.processedTurnKeys.has(key)) return;
+
+    const now = Date.now();
+    const lastSameAt = this.recentFinalTexts.get(normalized);
+    if (lastSameAt && now - lastSameAt < 4000) {
+      this.processedTurnKeys.add(key);
+      if (this.latestPendingUserTurn?.key === key) {
+        this.latestPendingUserTurn = null;
+      }
+      return;
+    }
+
     this.processedTurnKeys.add(key);
+    this.recentFinalTexts.set(normalized, now);
+
     if (this.processedTurnKeys.size > 50) {
       const oldest = this.processedTurnKeys.values().next().value;
       if (oldest) this.processedTurnKeys.delete(oldest);
+    }
+    if (this.recentFinalTexts.size > 30) {
+      for (const [k, ts] of this.recentFinalTexts) {
+        if (now - ts > 10000) this.recentFinalTexts.delete(k);
+      }
     }
     if (this.latestPendingUserTurn?.key === key) {
       this.latestPendingUserTurn = null;
@@ -278,11 +309,19 @@ export class AgoraVoiceSession {
       const text = typeof payload.text === 'string' ? payload.text.trim() : '';
       if (!text) return;
 
-      const isFinal =
-        payload.is_final === true || payload.final === true || payload.turn_status === 1;
+      const hasTurnStatus = typeof payload.turn_status === 'number';
+      const isFinal = hasTurnStatus
+        ? payload.turn_status === 1
+        : payload.is_final === true || payload.final === true;
 
       if (payload.object === 'user.transcription') {
-        const turnKey = `${payload.turn_id ?? payload.message_id ?? text}`;
+        const hasTurnId =
+          payload.turn_id !== undefined &&
+          payload.turn_id !== null &&
+          String(payload.turn_id).trim() !== '';
+        const turnKey = hasTurnId
+          ? `turn:${payload.turn_id}`
+          : `text:${this.normalizeTranscript(text)}`;
         if (!isFinal) {
           this.latestPendingUserTurn = { key: turnKey, text };
           callbacks.onUserInterimTranscript?.(text);

@@ -258,6 +258,8 @@ export const VibeCartProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   checkoutDraftRef.current = checkoutDraft;
   const agoraSessionRef = useRef<AgoraVoiceSession | null>(null);
   const lastUserVoiceAtRef = useRef<number>(0);
+  const inFlightVoiceTextsRef = useRef<Set<string>>(new Set());
+  const lastExecutedVoiceRef = useRef<{ text: string; at: number } | null>(null);
 
   const triggerCheckoutSubmit = useCallback(() => {
     setCheckoutSubmitNonce((n) => n + 1);
@@ -631,8 +633,9 @@ export const VibeCartProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     (productId: string, quantity = 1, variantName?: string) => {
       const product = productsRef.current.find((p) => p.id === productId);
       if (!product) return;
+      const safeQty = Math.max(1, Math.min(10, Math.round(Number.isFinite(quantity) ? quantity : 1)));
       const chosenVariant = variantName ?? product.variants[0]?.name ?? 'Standard';
-      let nextQty = quantity;
+      let nextQty = safeQty;
 
       const computeNext = (prev: CartItem[]): CartItem[] => {
         const existingIdx = prev.findIndex(
@@ -640,14 +643,14 @@ export const VibeCartProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         );
         if (existingIdx >= 0) {
           const next = [...prev];
-          nextQty = Math.min(10, next[existingIdx].quantity + quantity);
+          nextQty = Math.min(10, next[existingIdx].quantity + safeQty);
           next[existingIdx] = {
             ...next[existingIdx],
             quantity: nextQty,
           };
           return next;
         }
-        nextQty = Math.min(10, quantity);
+        nextQty = safeQty;
         return [...prev, { productId, quantity: nextQty, variantName: chosenVariant }];
       };
 
@@ -659,7 +662,10 @@ export const VibeCartProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       setLastAddedPulse((n) => n + 1);
       pushChip({
         type: 'success',
-        text: t(lang, 'addedReply', { title: product.title }),
+        text:
+          safeQty > 1
+            ? `Added ${safeQty} × ${product.title} to your cart.`
+            : t(lang, 'addedReply', { title: product.title }),
         undoLabel: 'Undo',
         onUndo: () => {
           setCart((prev) => {
@@ -667,13 +673,13 @@ export const VibeCartProvider: React.FC<{ children: React.ReactNode }> = ({ chil
               (i) => i.productId === productId && i.variantName === chosenVariant
             );
             if (idx < 0) return prev;
-            if (prev[idx].quantity <= quantity) {
+            if (prev[idx].quantity <= safeQty) {
               syncCartItemToSupabase(productId, chosenVariant, 0);
               const filtered = prev.filter((_, i) => i !== idx);
               cartRef.current = filtered;
               return filtered;
             }
-            const reduced = prev[idx].quantity - quantity;
+            const reduced = prev[idx].quantity - safeQty;
             syncCartItemToSupabase(productId, chosenVariant, reduced);
             const next = [...prev];
             next[idx] = { ...next[idx], quantity: reduced };
@@ -1227,24 +1233,39 @@ export const VibeCartProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           all.find(
             (p) =>
               p.title.toLowerCase().includes(lower) ||
-              p.tags.some((tag) => lower.includes(tag.toLowerCase()))
+              lower.includes(p.title.toLowerCase()) ||
+              p.tags.some((tag) => lower === tag.toLowerCase())
           );
         if (direct) return direct;
 
-        // Token-based fuzzy match (handles "pulse buds air", "chronopulse", etc.)
-        const tokens = lower.split(' ').filter((tok) => tok.length >= 2);
+        // Token-based fuzzy match (ignore short stopwords so unrelated speech never adds random products)
+        const STOP_TOKENS = new Set([
+          'to', 'in', 'on', 'at', 'of', 'for', 'my', 'me', 'it', 'is', 'an', 'as', 'by', 'or', 'if',
+          'the', 'and', 'with', 'only', 'just', 'want', 'need', 'add', 'put', 'cart', 'bag', 'basket',
+          'item', 'items', 'unit', 'units', 'pcs', 'piece', 'pieces', 'qty', 'quantity', 'please',
+          'back', 'again', 'now', 'you', 'did', 'why', 'one', 'two', 'three', 'four', 'five', 'six',
+          'seven', 'eight', 'nine', 'ten',
+        ]);
+        const tokens = lower
+          .split(' ')
+          .filter((tok) => tok.length >= 2 && !STOP_TOKENS.has(tok));
         if (tokens.length > 0) {
           let bestProduct: Product | null = null;
           let bestScore = 0;
           for (const candidate of [...lastResults, ...all]) {
             const hay = `${candidate.title} ${candidate.brand} ${candidate.tags.join(' ')}`.toLowerCase();
-            const score = tokens.reduce((acc, tok) => acc + (hay.includes(tok) ? 1 : 0), 0);
+            const hayWords = new Set(hay.split(/[^a-z0-9]+/).filter(Boolean));
+            const score = tokens.reduce((acc, tok) => {
+              if (hayWords.has(tok)) return acc + 2;
+              if (tok.length >= 4 && hay.includes(tok)) return acc + 1;
+              return acc;
+            }, 0);
             if (score > bestScore) {
               bestScore = score;
               bestProduct = candidate;
             }
           }
-          if (bestProduct && bestScore >= 1) return bestProduct;
+          if (bestProduct && bestScore >= 2) return bestProduct;
         }
       }
       return null;
@@ -1357,8 +1378,14 @@ export const VibeCartProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           const matchedVariant = colorHint
             ? target.variants.find((v) => v.name.toLowerCase().includes(colorHint))?.name
             : target.variants[0]?.name;
-          addToCart(target.id, action.entities.quantity ?? 1, matchedVariant);
-          return replyHint ?? t(lang, 'addedReply', { title: target.title });
+          const qty = Math.max(1, Math.min(10, Math.round(action.entities.quantity ?? 1)));
+          addToCart(target.id, qty, matchedVariant);
+          return (
+            replyHint ??
+            (qty > 1
+              ? `Added ${qty} × ${target.title} to your cart.`
+              : t(lang, 'addedReply', { title: target.title }))
+          );
         }
 
         case 'REMOVE_FROM_CART': {
@@ -1690,52 +1717,85 @@ export const VibeCartProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     ]
   );
 
+  const detectSpokenLanguage = (text: string): LangCode | null => {
+    if (/[\u0900-\u097F]/.test(text)) return 'hi-IN';
+    if (/[\u0C80-\u0CFF]/.test(text)) return 'kn-IN';
+    if (/[\u0B80-\u0BFF]/.test(text)) return 'ta-IN';
+    if (/[\u0C00-\u0C7F]/.test(text)) return 'te-IN';
+    return null;
+  };
+
   const runVoiceCommand = useCallback(
     async (text: string, options: { speak?: boolean } = { speak: true }) => {
       const trimmed = text.trim();
       if (!trimmed) return;
 
-      lastUserVoiceAtRef.current = Date.now();
+      const dedupKey = trimmed
+        .toLowerCase()
+        .replace(/[.,!?।]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+      const now = Date.now();
+      if (inFlightVoiceTextsRef.current.has(dedupKey)) return;
+      if (
+        lastExecutedVoiceRef.current &&
+        lastExecutedVoiceRef.current.text === dedupKey &&
+        now - lastExecutedVoiceRef.current.at < 2000
+      ) {
+        return;
+      }
+
+      inFlightVoiceTextsRef.current.add(dedupKey);
+      lastExecutedVoiceRef.current = { text: dedupKey, at: now };
+      lastUserVoiceAtRef.current = now;
       setTranscript(trimmed);
       setVoiceStatus('thinking');
 
-      const { parsed, replyHint } = await understand(trimmed, {
-        screen: route,
-        lang,
-        cartCount: cartRef.current.reduce((s, i) => s + i.quantity, 0),
-        visibleProducts: lastResults.slice(0, 6).map((p, idx) => ({
-          index: idx + 1,
-          id: p.id,
-          title: p.title,
-          price: p.price,
-        })),
-      });
-
-      const replies: string[] = [];
-      replies.push(executeParsedAction(parsed, parsed.followUpActions?.length ? undefined : replyHint));
-      if (parsed.followUpActions && parsed.followUpActions.length > 0) {
-        for (const nextAction of parsed.followUpActions) {
-          replies.push(executeParsedAction(nextAction));
+      try {
+        const detectedLang = detectSpokenLanguage(trimmed);
+        const effectiveLang = detectedLang ?? lang;
+        if (detectedLang && detectedLang !== lang) {
+          setLang(detectedLang);
         }
-      }
 
-      const combinedReply = replies.filter(Boolean).join(' ');
-      setAssistantReply(combinedReply);
-      setVoiceStatus(agoraActive ? 'listening' : 'speaking');
-      if (options.speak !== false && !agoraActive) {
-        speakReply(combinedReply, lang, voiceGender);
+        const { parsed, replyHint } = await understand(trimmed, {
+          screen: route,
+          lang: effectiveLang,
+          cartCount: cartRef.current.reduce((s, i) => s + i.quantity, 0),
+          visibleProducts: lastResults.slice(0, 6).map((p, idx) => ({
+            index: idx + 1,
+            id: p.id,
+            title: p.title,
+            price: p.price,
+          })),
+        });
+
+        const replies: string[] = [];
+        replies.push(executeParsedAction(parsed, parsed.followUpActions?.length ? undefined : replyHint));
+        if (parsed.followUpActions && parsed.followUpActions.length > 0) {
+          for (const nextAction of parsed.followUpActions) {
+            replies.push(executeParsedAction(nextAction));
+          }
+        }
+
+        const combinedReply = replies.filter(Boolean).join(' ');
+        setAssistantReply(combinedReply);
+        setVoiceStatus(agoraActive ? 'listening' : 'speaking');
+        if (options.speak !== false && !agoraActive) {
+          speakReply(combinedReply, parsed.entities.lang ?? effectiveLang, voiceGender);
+        }
+        window.setTimeout(() => {
+          setVoiceStatus((cur) => (cur === 'speaking' ? 'idle' : cur));
+        }, 900);
+      } finally {
+        inFlightVoiceTextsRef.current.delete(dedupKey);
       }
-      window.setTimeout(() => {
-        setVoiceStatus((cur) => (cur === 'speaking' ? 'idle' : cur));
-      }, 900);
     },
-    [agoraActive, executeParsedAction, lang, lastResults, route, voiceGender]
+    [agoraActive, executeParsedAction, lang, lastResults, route, setLang, voiceGender]
   );
 
   const runVoiceCommandRef = useRef(runVoiceCommand);
   runVoiceCommandRef.current = runVoiceCommand;
-  const executeParsedActionRef = useRef(executeParsedAction);
-  executeParsedActionRef.current = executeParsedAction;
 
   const startAgoraVoice = useCallback(async (): Promise<boolean> => {
     stopSpeaking();
@@ -1768,28 +1828,8 @@ export const VibeCartProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           setTranscript(text);
           runVoiceCommandRef.current(text, { speak: false });
         },
-        onAssistantTranscript: (text, isFinal) => {
+        onAssistantTranscript: (text) => {
           setAssistantReply(text);
-          // Safety net: if Agora's assistant announces adding a product or going to checkout
-          // and no user transcript triggered within the last 2.5s, sync the UI automatically.
-          if (isFinal && Date.now() - lastUserVoiceAtRef.current > 2500) {
-            const lower = text.toLowerCase();
-            if (/\badded\b/.test(lower)) {
-              const mentioned = productsRef.current.find((p) =>
-                lower.includes(p.title.toLowerCase())
-              );
-              if (mentioned) {
-                executeParsedActionRef.current({
-                  intent: 'ADD_TO_CART',
-                  confidence: 0.9,
-                  entities: { productRef: { id: mentioned.id } },
-                });
-              }
-            }
-            if (/\bcheckout\b/.test(lower) && cartRef.current.length > 0) {
-              navigate('checkout');
-            }
-          }
         },
         onSpeakingChange: (speaking) => {
           setVoiceStatus(speaking ? 'speaking' : 'listening');
@@ -1810,7 +1850,7 @@ export const VibeCartProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         },
       }
     );
-  }, [cartCount, lang, navigate, pushChip, route, voiceGender]);
+  }, [cartCount, lang, pushChip, route, voiceGender]);
 
   const stopAgoraVoice = useCallback(async () => {
     if (!agoraSessionRef.current) return;

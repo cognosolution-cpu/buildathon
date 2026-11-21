@@ -268,3 +268,43 @@ test('expanded catalog includes gaming, workspace, fitness, and travel categorie
   assert.ok(searchCatalog({ category: 'travel' }).length >= 2);
 });
 
+test('ruleParse distinguishes exact ADD_TO_CART quantity from product index and model numbers', () => {
+  const onlyOne = ruleParse('Add only one');
+  assert.equal(onlyOne.intent, 'ADD_TO_CART');
+  assert.equal(onlyOne.entities.quantity, 1);
+  assert.deepEqual(onlyOne.entities.productRef, { this: true });
+
+  const oneNamed = ruleParse('Add only one PulseBuds Air ANC');
+  assert.equal(oneNamed.intent, 'ADD_TO_CART');
+  assert.equal(oneNamed.entities.quantity, 1);
+  assert.equal(oneNamed.entities.productRef?.name, 'PulseBuds Air ANC');
+
+  const twoWordsNamed = ruleParse('Add two PulseBuds Air ANC to my cart');
+  assert.equal(twoWordsNamed.intent, 'ADD_TO_CART');
+  assert.equal(twoWordsNamed.entities.quantity, 2);
+  assert.equal(twoWordsNamed.entities.productRef?.name, 'PulseBuds Air ANC');
+
+  const threeOfSecond = ruleParse('Add 3 of the second one');
+  assert.equal(threeOfSecond.intent, 'ADD_TO_CART');
+  assert.equal(threeOfSecond.entities.quantity, 3);
+  assert.deepEqual(threeOfSecond.entities.productRef, { index: 2 });
+
+  const itemIndex = ruleParse('Add item 2');
+  assert.equal(itemIndex.intent, 'ADD_TO_CART');
+  assert.equal(itemIndex.entities.quantity, 1);
+  assert.deepEqual(itemIndex.entities.productRef, { index: 2 });
+
+  const modelWithDigit = ruleParse('Add StrideLab Tempo Knit 2');
+  assert.equal(modelWithDigit.intent, 'ADD_TO_CART');
+  assert.equal(modelWithDigit.entities.quantity, 1);
+  assert.equal(modelWithDigit.entities.productRef?.name, 'StrideLab Tempo Knit 2');
+
+  const model140w = ruleParse('Add VoltCore 140W GaN Travel Brick');
+  assert.equal(model140w.intent, 'ADD_TO_CART');
+  assert.equal(model140w.entities.quantity, 1);
+  assert.equal(model140w.entities.productRef?.name, 'VoltCore 140W GaN Travel Brick');
+
+  const complaint = ruleParse('Why did you add 23 items? I said only one');
+  assert.notEqual(complaint.intent, 'ADD_TO_CART');
+});
+
