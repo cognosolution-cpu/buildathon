@@ -29,6 +29,10 @@ interface ChunkAccumulator {
 interface AgoraStreamPayload {
   object?: string;
   text?: string;
+  message?: string;
+  error?: string;
+  module?: string;
+  code?: number | string;
   final?: boolean;
   is_final?: boolean;
   turn_status?: number;
@@ -267,6 +271,10 @@ export class AgoraVoiceSession {
       }
 
       const payload = JSON.parse(jsonText) as AgoraStreamPayload;
+      if (payload.object === 'message.error') {
+        console.warn('[AgoraVoice] Agent error:', payload.module ?? 'unknown', payload.code ?? '', payload.message ?? payload.error ?? '');
+        return;
+      }
       const text = typeof payload.text === 'string' ? payload.text.trim() : '';
       if (!text) return;
 

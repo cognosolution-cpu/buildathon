@@ -13,7 +13,7 @@ import {
   handleMurfTts,
   handleNlu,
   handleVerifyRazorpay,
-} from './server/handlers.js';
+} from './server/handlers.ts';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT ?? 3000);

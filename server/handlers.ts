@@ -2,9 +2,9 @@ import crypto from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { GoogleGenAI, ThinkingLevel, Type } from '@google/genai';
 import agoraTokenPkg from 'agora-token';
-import { CATALOG } from '../src/data/catalog.js';
-import type { LangCode, VoiceGender } from '../src/types.js';
-import { resolveMurfVoice } from '../src/voice/murfVoices.js';
+import { CATALOG } from '../src/data/catalog.ts';
+import type { LangCode, VoiceGender } from '../src/types.ts';
+import { resolveMurfVoice } from '../src/voice/murfVoices.ts';
 
 const resolvedAgoraPkg =
   (agoraTokenPkg as unknown as { default?: typeof agoraTokenPkg }).default ?? agoraTokenPkg;
@@ -233,6 +233,31 @@ export function handleAgoraToken(body: Record<string, unknown>): HandlerResult {
   };
 }
 
+async function resolveAgoraGeminiModel(geminiKey: string): Promise<string> {
+  const candidates = ['gemini-3.1-flash-lite', 'gemini-2.5-flash', 'gemini-4-hydrogen'];
+  for (const candidate of candidates) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 1500);
+    try {
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${candidate}?key=${encodeURIComponent(geminiKey)}`,
+        { signal: controller.signal }
+      );
+      if (res.ok) {
+        return candidate;
+      }
+      if (res.status === 401 || res.status === 403) {
+        return candidate;
+      }
+    } catch {
+      return candidate;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+  return 'gemini-3.1-flash-lite';
+}
+
 export async function handleAgoraStart(body: Record<string, unknown>): Promise<HandlerResult> {
   const { appId, appCert, murfKey } = getAgoraCredentials();
   const geminiKey = getGeminiApiKey();
@@ -271,6 +296,7 @@ export async function handleAgoraStart(body: Record<string, unknown>): Promise<H
   const agentUid = 999999;
   const restToken = buildAgoraRtcToken(appId, appCert, channelName, 0, 3600);
   const agentToken = buildAgoraRtcToken(appId, appCert, channelName, agentUid, 3600);
+  const geminiModel = await resolveAgoraGeminiModel(geminiKey);
 
   const context = (body?.context ?? {}) as Record<string, unknown>;
   const catalogSummary = CATALOG.map(
@@ -287,6 +313,14 @@ export async function handleAgoraStart(body: Record<string, unknown>): Promise<H
     'kn-IN': 'ನಮಸ್ಕಾರ! ವಾಯ್ಕೋಕಾರ್ಟ್‌ಗೆ ಸ್ವಾಗತ. ಇಂದು ನಿಮಗೆ ಯಾವ ಗ್ಯಾಜೆಟ್ ಅಥವಾ ಬಜೆಟ್ ಬೇಕು ಹೇಳಿ?',
     'ta-IN': 'வணக்கம்! வாய்கோகார்ட்டிற்கு வரவேற்கிறோம். இன்று என்ன பொருள் வாங்க விரும்புகிறீர்கள்?',
     'te-IN': 'నమస్కారం! వాయికోకార్ట్‌కు స్వాగతం. ఈరోజు మీరు ఏం కొనాలనుకుంటున్నారు?',
+  };
+
+  const failureByLang: Record<LangCode, string> = {
+    'en-IN': 'Sorry, I missed that. Could you repeat your shopping request?',
+    'hi-IN': 'माफ कीजिए, मैं समझ नहीं पाई। कृपया अपना शॉपिंग अनुरोध दोहराएँ।',
+    'kn-IN': 'ಕ್ಷಮಿಸಿ, ಅದು ಸ್ಪಷ್ಟವಾಗಿ ಕೇಳಿಸಲಿಲ್ಲ. ದಯವಿಟ್ಟು ಮತ್ತೊಮ್ಮೆ ಹೇಳಿ.',
+    'ta-IN': 'மன்னிக்கவும், அது சரியாக கேட்கவில்லை. தயவுசெய்து மீண்டும் சொல்லுங்கள்.',
+    'te-IN': 'క్షమించండి, అది సరిగ్గా వినిపించలేదు. దయచేసి మళ్లీ చెప్పండి.',
   };
 
   const systemPrompt = `You are VoicoCart's live conversational shopping assistant powered by Agora Voice AI and Murf Falcon 2.
@@ -324,16 +358,20 @@ On checkout or profile, help fill and save name, 10-digit mobile, street address
               language: voice.asrLanguage,
             },
             llm: {
-              url: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',
-              api_key: geminiKey,
-              style: 'openai',
+              url: `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:streamGenerateContent?alt=sse&key=${encodeURIComponent(geminiKey)}`,
+              style: 'gemini',
               params: {
-                model: 'gemini-3.1-flash-lite',
-                max_tokens: 140,
+                model: geminiModel,
               },
-              system_messages: [{ role: 'system', content: systemPrompt }],
+              system_messages: [
+                {
+                  role: 'user',
+                  parts: [{ text: systemPrompt }],
+                },
+              ],
+              ignore_empty: true,
               greeting_message: greetingByLang[lang] ?? greetingByLang['en-IN'],
-              failure_message: 'Sorry, I missed that. Could you repeat your shopping request?',
+              failure_message: failureByLang[lang] ?? failureByLang['en-IN'],
               max_history: 16,
             },
             tts: {
