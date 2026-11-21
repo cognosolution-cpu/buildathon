@@ -432,7 +432,7 @@ export const CheckoutScreen: React.FC = () => {
                   Razorpay Test Mode
                 </p>
                 <p className="font-display text-xl font-bold tabular-nums">
-                  VibeCart · ₹{cartTotal.toLocaleString('en-IN')}
+                  VoicoCart · ₹{cartTotal.toLocaleString('en-IN')}
                 </p>
               </div>
               <button

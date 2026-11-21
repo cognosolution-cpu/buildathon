@@ -91,11 +91,11 @@ async function startServer() {
   }
 
   httpServer.listen(PORT, '0.0.0.0', () => {
-    console.log(`VibeCart server listening on http://localhost:${PORT}`);
+    console.log(`VoicoCart server listening on http://localhost:${PORT}`);
   });
 }
 
 startServer().catch((err) => {
-  console.error('Failed to start VibeCart server:', err);
+  console.error('Failed to start VoicoCart server:', err);
   process.exit(1);
 });

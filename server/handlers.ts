@@ -62,7 +62,7 @@ const NLU_ENTITIES_PROPERTIES = {
   category: {
     type: Type.STRING,
     description:
-      'Optional category slug: audio, wearables, smart-home, footwear, peripherals, cameras, eyewear, accessories.',
+      'Optional category slug: audio, wearables, smart-home, footwear, peripherals, cameras, eyewear, accessories, gaming, workspace, fitness, travel.',
   },
   maxPrice: { type: Type.NUMBER, description: 'Maximum price in INR.' },
   minPrice: { type: Type.NUMBER, description: 'Minimum price in INR.' },
@@ -211,7 +211,7 @@ export function handleAgoraToken(body: Record<string, unknown>): HandlerResult {
 
   const rawChannel = typeof body?.channelName === 'string' ? body.channelName.trim() : '';
   const channelName =
-    rawChannel || `vibecart_${Date.now().toString(36)}_${Math.floor(100 + Math.random() * 899)}`;
+    rawChannel || `voicocart_${Date.now().toString(36)}_${Math.floor(100 + Math.random() * 899)}`;
   const rawUid = Number(body?.uid);
   const uid =
     Number.isFinite(rawUid) && rawUid > 0
@@ -262,7 +262,9 @@ export async function handleAgoraStart(body: Record<string, unknown>): Promise<H
   }
 
   const lang = (typeof body?.lang === 'string' ? body.lang : 'en-IN') as LangCode;
-  const voiceGender = (body?.voiceGender === 'male' ? 'male' : 'female') as VoiceGender;
+  const rawGender = body?.voiceGender;
+  const voiceGender: VoiceGender =
+    rawGender === 'cloned' ? 'cloned' : rawGender === 'male' ? 'male' : 'female';
   const voice = resolveMurfVoice(lang, voiceGender);
 
   const userUid = Number.isFinite(Number(body?.userUid)) ? String(Number(body.userUid)) : '*';
@@ -280,16 +282,16 @@ export async function handleAgoraStart(body: Record<string, unknown>): Promise<H
   ).join('\n');
 
   const greetingByLang: Record<LangCode, string> = {
-    'en-IN': 'Namaste! Welcome to VibeCart. Tell me what gear or budget you are looking for today.',
-    'hi-IN': 'नमस्ते! वाइबकार्ट में आपका स्वागत है। बताइए आज आप क्या खरीदना चाहते हैं?',
-    'kn-IN': 'ನಮಸ್ಕಾರ! ವೈಬ್‌ಕಾರ್ಟ್‌ಗೆ ಸ್ವಾಗತ. ಇಂದು ನಿಮಗೆ ಯಾವ ಗ್ಯಾಜೆಟ್ ಅಥವಾ ಬಜೆಟ್ ಬೇಕು ಹೇಳಿ?',
-    'ta-IN': 'வணக்கம்! வைப்கார்ட்டிற்கு வரவேற்கிறோம். இன்று என்ன பொருள் வாங்க விரும்புகிறீர்கள்?',
-    'te-IN': 'నమస్కారం! వైబ్‌కార్ట్‌కు స్వాగతం. ఈరోజు మీరు ఏం కొనాలనుకుంటున్నారు?',
+    'en-IN': 'Namaste! Welcome to VoicoCart. Tell me what gear or budget you are looking for today.',
+    'hi-IN': 'नमस्ते! वॉइकोकार्ट में आपका स्वागत है। बताइए आज आप क्या खरीदना चाहते हैं?',
+    'kn-IN': 'ನಮಸ್ಕಾರ! ವಾಯ್ಕೋಕಾರ್ಟ್‌ಗೆ ಸ್ವಾಗತ. ಇಂದು ನಿಮಗೆ ಯಾವ ಗ್ಯಾಜೆಟ್ ಅಥವಾ ಬಜೆಟ್ ಬೇಕು ಹೇಳಿ?',
+    'ta-IN': 'வணக்கம்! வாய்கோகார்ட்டிற்கு வரவேற்கிறோம். இன்று என்ன பொருள் வாங்க விரும்புகிறீர்கள்?',
+    'te-IN': 'నమస్కారం! వాయికోకార్ట్‌కు స్వాగతం. ఈరోజు మీరు ఏం కొనాలనుకుంటున్నారు?',
   };
 
-  const systemPrompt = `You are VibeCart's live conversational shopping assistant powered by Agora Voice AI and Murf Falcon 2.
+  const systemPrompt = `You are VoicoCart's live conversational shopping assistant powered by Agora Voice AI and Murf Falcon 2.
 Speak naturally and concisely (under 24 words per reply) in the shopper's language (${lang}). Never use markdown bullets or emojis in spoken text.
-Important: The VibeCart app automatically executes navigation, cart additions/removals, product comparisons, 2D/3D view toggling, saving profile details & delivery addresses, checkout form filling, and payment triggers in real time as the shopper speaks.
+Important: The VoicoCart app automatically executes navigation, cart additions/removals, product comparisons, 2D/3D view toggling, saving profile details & delivery addresses, checkout form filling, and payment triggers in real time as the shopper speaks.
 Never claim there was a technical issue or say you cannot access the cart, profile, saved addresses, or checkout form.
 Store catalog (prices in Indian Rupees):
 ${catalogSummary}
@@ -306,7 +308,7 @@ On checkout or profile, help fill and save name, 10-digit mobile, street address
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          name: `vibecart_${channelName}_${Date.now().toString(36)}`,
+          name: `voicocart_${channelName}_${Date.now().toString(36)}`,
           properties: {
             channel: channelName,
             token: agentToken,
@@ -341,7 +343,7 @@ On checkout or profile, help fill and save name, 10-digit mobile, street address
                 base_url: 'wss://global.api.murf.ai/v1/speech/stream-input',
                 voice_id: voice.voiceId,
                 locale: voice.locale,
-                model: 'FALCON',
+                model: voice.model ?? 'FALCON',
                 sample_rate: 24000,
                 rate: 0,
                 pitch: 0,
@@ -396,7 +398,7 @@ export async function handleAgoraStop(body: Record<string, unknown>): Promise<Ha
   const channelName =
     typeof body?.channelName === 'string' && body.channelName.trim()
       ? body.channelName.trim()
-      : 'vibecart-leave';
+      : 'voicocart-leave';
 
   if (!appId || !appCert) {
     return { status: 503, data: { error: 'Agora credentials not configured.' } };
@@ -440,47 +442,65 @@ export async function handleMurfTts(body: Record<string, unknown>): Promise<Hand
   }
 
   const lang = (typeof body?.lang === 'string' ? body.lang : 'en-IN') as LangCode;
-  const voiceGender = (body?.voiceGender === 'male' ? 'male' : 'female') as VoiceGender;
+  const rawGender = body?.voiceGender;
+  const voiceGender: VoiceGender =
+    rawGender === 'cloned' ? 'cloned' : rawGender === 'male' ? 'male' : 'female';
   const voice = resolveMurfVoice(lang, voiceGender);
 
-  const payload = JSON.stringify({
-    text: text.slice(0, 600),
-    voiceId: voice.voiceId,
-    model: 'FALCON',
-    locale: voice.locale,
-    format: 'MP3',
-    sampleRate: 24000,
-  });
+  const isFalcon21 = voice.model === 'falcon-2.1';
+  const endpoints = isFalcon21
+    ? [
+        'https://global.api.murf.ai/v1/speech/stream',
+        'https://in.api.murf.ai/v1/speech/stream',
+      ]
+    : [
+        'https://in.api.murf.ai/v1/speech/stream',
+        'https://global.api.murf.ai/v1/speech/stream',
+      ];
 
-  const endpoints = [
-    'https://in.api.murf.ai/v1/speech/stream',
-    'https://global.api.murf.ai/v1/speech/stream',
-  ];
+  const candidateLocales = Array.from(
+    new Set(isFalcon21 ? [voice.locale, 'en-US', 'en-IN'] : [voice.locale])
+  );
+  const candidateModels = isFalcon21 ? ['falcon-2.1', 'FALCON'] : ['FALCON'];
 
-  for (const url of endpoints) {
-    try {
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'api-key': murfKey,
-          'Content-Type': 'application/json',
-        },
-        body: payload,
+  for (const model of candidateModels) {
+    for (const targetLocale of candidateLocales) {
+      const payload = JSON.stringify({
+        text: text.slice(0, 600),
+        voiceId: voice.voiceId,
+        model,
+        locale: targetLocale,
+        format: 'MP3',
+        sampleRate: 24000,
+        ...(voice.channelType ? { channelType: voice.channelType } : {}),
       });
-      if (res.ok) {
-        const arrBuf = await res.arrayBuffer();
-        return {
-          status: 200,
-          binary: Buffer.from(arrBuf),
-          contentType: 'audio/mpeg',
-        };
+
+      for (const url of endpoints) {
+        try {
+          const res = await fetch(url, {
+            method: 'POST',
+            headers: {
+              'api-key': murfKey,
+              'Content-Type': 'application/json',
+            },
+            body: payload,
+          });
+          if (res.ok) {
+            const arrBuf = await res.arrayBuffer();
+            return {
+              status: 200,
+              binary: Buffer.from(arrBuf),
+              contentType: 'audio/mpeg',
+            };
+          }
+        } catch {
+          // Try next Murf endpoint/locale
+        }
       }
-    } catch {
-      // Try next regional Murf endpoint
     }
   }
 
-  return { status: 502, data: { error: 'Failed to synthesize audio via Murf Falcon 2.' } };
+  return { status: 502, data: { error: 'Failed to synthesize audio via Murf Falcon.' } };
 }
 
 export async function handleCreateRazorpayOrder(
@@ -607,7 +627,7 @@ export async function handleNlu(body: Record<string, unknown>): Promise<HandlerR
     return { status: 400, data: { error: 'Transcript is required.' } };
   }
 
-  const systemInstruction = `You are the voice NLU intent router for VibeCart (an Indian dark-mode electronics & gear store).
+  const systemInstruction = `You are the voice NLU intent router for VoicoCart (an Indian dark-mode electronics & gear store).
 Map natural, conversational, Hinglish, Hindi, Kannada, Tamil, Telugu, or English shopping requests into structured intent + entities JSON.
 Never invent products or prices; only extract what the user wants or refers to.
 Active store categories:
@@ -619,12 +639,17 @@ Active store categories:
 - cameras (4K action & vlog camera)
 - eyewear (AI smart sunglasses)
 - accessories (MagSafe power bank, commuter tech sling bag)
+- gaming (Hall-Effect gamepad controller, wireless esports headset)
+- workspace (Thunderbolt 4 rotary dock, MagSafe desk console)
+- fitness (percussive massage gun, screenless HRV recovery strap)
+- travel (140W GaN travel brick charger, hard-shell tech organizer)
 Extraction rules:
 - If the user mentions any budget or price cap (e.g. "around 3000", "under 2k", "budget 5000"), always set entities.maxPrice as a number in INR.
-- Map activity/occasion words to the best matching category and search query (e.g. "morning jog" -> category="footwear", query="running shoes"; "gaming" -> category="peripherals", query="keyboard"; "gym music" -> category="audio", query="wireless earbuds").
+- Map activity/occasion words to the best matching category and search query (e.g. "morning jog" -> category="footwear", query="running shoes"; "gaming" -> category="gaming", query="gamepad"; "gym music" -> category="audio", query="wireless earbuds"; "travel adapter" -> category="travel", query="gan charger").
 - Use FILL_CHECKOUT whenever the user provides delivery details (name, phone, street line1, city, state, pincode), selects card/upi, provides upiId, asks to use saved address, or says pay now / submit payment. Set saveAddress=true if they also ask to save it.
 - Use SAVE_ADDRESS when the user asks to save/add a delivery address to their profile or save the current address (populate checkoutFields + saveAddress=true).
 - Use UPDATE_PROFILE when the user asks to update or save their personal profile fullName or phone number (populate profileFields).
+- When the user asks to "show me the full product in 3d view", "show the second one in 3d", or "open <product> in 3D view", use ASK_PRODUCT with simpleView=false and populate productRef (index, name, or this=true if unspecified). Never emit SEARCH_PRODUCTS for "full product in 3d view".
 - Use TOGGLE_SIMPLE_VIEW when the user asks to turn on/off Simple View or switch between 2D studio photos (simpleView=true) and 3D view (simpleView=false).
 - Use NAVIGATE with targetRoute (home, results, product, compare, cart, checkout, orders, profile) when the user asks to go to or open a page.
 - Use followUpActions if the user asks for multiple actions in one turn (e.g., ADD_TO_CART followed by CHECKOUT, or FILL_CHECKOUT followed by CHECKOUT).

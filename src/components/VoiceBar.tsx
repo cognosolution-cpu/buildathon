@@ -136,7 +136,7 @@ export const VoiceAssistantShell: React.FC = () => {
       {voiceOverlayOpen && (
         <div
           role="dialog"
-          aria-label="VibeCart Voice Assistant"
+          aria-label="VoicoCart Voice Assistant"
           className={`fixed z-50 inset-x-3 md:inset-x-auto md:right-7 md:bottom-28 md:w-[440px] max-h-[calc(100dvh-6.5rem)] overflow-y-auto rounded-[24px] vc-glass-blur p-4 sm:p-5 shadow-2xl ${
             route === 'product' ? 'bottom-[8.75rem]' : 'bottom-20'
           }`}
@@ -165,7 +165,7 @@ export const VoiceAssistantShell: React.FC = () => {
               </button>
               <div className="min-w-0">
                 <h2 className="font-display text-sm font-semibold text-[#F5F5F5] truncate">
-                  VibeCart Voice AI
+                  VoicoCart Voice AI
                 </h2>
                 <p className="text-xs text-[#9A9A9A] truncate">{statusText}</p>
               </div>

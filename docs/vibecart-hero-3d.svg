@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 430" width="1200" height="430" role="img" aria-label="VibeCart 3D Voice-First Commerce Hero Banner">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 430" width="1200" height="430" role="img" aria-label="VoicoCart 3D Voice-First Commerce Hero Banner">
   <defs>
     <linearGradient id="bgGrad" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0%" stop-color="#0b0908" />
@@ -125,7 +125,7 @@
 
       <!-- Brand Title -->
       <text x="86" y="34" fill="#FFA040" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="13" font-weight="700" letter-spacing="2">VOICE-FIRST SPATIAL COMMERCE</text>
-      <text x="86" y="66" fill="#F5F5F5" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="40" font-weight="800" letter-spacing="-0.8">Vibe<tspan fill="#FF6A00">Cart</tspan></text>
+      <text x="86" y="66" fill="#F5F5F5" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="40" font-weight="800" letter-spacing="-0.8">Voico<tspan fill="#FF6A00">Cart</tspan></text>
     </g>
 
     <!-- Main Tagline & Subtitle -->

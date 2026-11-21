@@ -51,7 +51,7 @@ export const Header: React.FC = () => {
             />
           </svg>
           <span className="font-display text-lg font-bold tracking-tight text-[#F5F5F5]">
-            Vibe<span className="text-[#FF6A00]">Cart</span>
+            Voico<span className="text-[#FF6A00]">Cart</span>
           </span>
         </a>
 

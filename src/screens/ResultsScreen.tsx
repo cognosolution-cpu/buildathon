@@ -7,6 +7,10 @@ import type { Product } from '../types';
 const CATEGORIES: Array<{ id: Product['category'] | 'all'; label: string }> = [
   { id: 'all', label: 'All Gear' },
   { id: 'audio', label: 'Audio' },
+  { id: 'gaming', label: 'Gaming Gear' },
+  { id: 'workspace', label: 'Desk & Setup' },
+  { id: 'fitness', label: 'Fitness & Recovery' },
+  { id: 'travel', label: 'Travel Tech' },
   { id: 'wearables', label: 'Wearables' },
   { id: 'cameras', label: 'Cameras' },
   { id: 'eyewear', label: 'Eyewear' },

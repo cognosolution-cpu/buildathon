@@ -343,27 +343,29 @@ export const ProfileScreen: React.FC = () => {
           })}
         </div>
 
-        {/* Murf Falcon 2 Indian Voice Selector */}
+        {/* Murf Falcon Voice Selector */}
         <div className="pt-3 border-t border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
             <p className="text-sm font-medium text-[#F5F5F5]">
-              Murf Falcon 2 Voice: <span className="text-[#FFA040]">{activeVoice.displayName}</span>
+              Murf Falcon Voice: <span className="text-[#FFA040]">{activeVoice.displayName}</span>
             </p>
             <p className="text-xs text-[#9A9A9A]">
-              Choose female or male Indian voice for Agora Voice AI & spoken replies.
+              Choose female, male, or Piyush cloned voice (Falcon 2.1) for Agora Voice AI & spoken replies.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            {(['female', 'male'] as const).map((g) => {
+            {(['female', 'male', 'cloned'] as const).map((g) => {
               const spec = resolveMurfVoice(lang, g);
               const selected = voiceGender === g;
+              const btnLabel =
+                g === 'cloned' ? 'Piyush (Cloned)' : `${g} (${spec.voiceId})`;
               return (
                 <button
                   key={g}
                   type="button"
                   onClick={() => {
                     setVoiceGender(g);
-                    pushChip({ type: 'info', text: `Voice set to ${spec.voiceId}` });
+                    pushChip({ type: 'info', text: `Voice set to ${spec.displayName}` });
                   }}
                   aria-pressed={selected}
                   className={`h-10 px-3.5 rounded-xl border text-xs font-medium capitalize cursor-pointer ${
@@ -372,7 +374,7 @@ export const ProfileScreen: React.FC = () => {
                       : 'border-white/10 bg-[#0B0B0B] text-[#9A9A9A] hover:text-white'
                   }`}
                 >
-                  {g} ({spec.voiceId})
+                  {btnLabel}
                 </button>
               );
             })}
@@ -380,7 +382,7 @@ export const ProfileScreen: React.FC = () => {
               type="button"
               onClick={() =>
                 speakReply(
-                  `Namaste! I am ${activeVoice.voiceId}, your VibeCart voice assistant.`,
+                  `Namaste! I am ${voiceGender === 'cloned' ? 'Piyush' : activeVoice.voiceId}, your VoicoCart voice assistant.`,
                   lang,
                   voiceGender
                 )
@@ -671,7 +673,7 @@ export const ProfileScreen: React.FC = () => {
         <div className="text-xs text-[#9A9A9A] leading-relaxed">
           <p className="text-sm font-semibold text-[#F5F5F5] mb-1">Voice Privacy Note</p>
           <p>
-            When a live voice session is started, audio streams over encrypted Agora RTC channels to the Agora Conversational AI Engine and Murf Falcon 2 speech synthesis. VibeCart executes shopping actions in real time without storing raw microphone recordings.
+            When a live voice session is started, audio streams over encrypted Agora RTC channels to the Agora Conversational AI Engine and Murf Falcon 2 speech synthesis. VoicoCart executes shopping actions in real time without storing raw microphone recordings.
           </p>
         </div>
       </section>

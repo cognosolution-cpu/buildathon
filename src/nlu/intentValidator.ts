@@ -44,6 +44,10 @@ const VALID_CATEGORIES: Set<Product['category']> = new Set([
   'cameras',
   'eyewear',
   'accessories',
+  'gaming',
+  'workspace',
+  'fitness',
+  'travel',
 ]);
 
 const VALID_LANGS: Set<LangCode> = new Set(['en-IN', 'hi-IN', 'kn-IN', 'ta-IN', 'te-IN']);

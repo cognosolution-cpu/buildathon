@@ -22,7 +22,11 @@ export type ProductPreset =
   | 'powerbank'
   | 'lamp'
   | 'backpack'
-  | 'mouse';
+  | 'mouse'
+  | 'controller'
+  | 'dock'
+  | 'recovery'
+  | 'charger';
 
 export interface ProductVariant {
   name: string;
@@ -51,7 +55,11 @@ export interface Product {
     | 'peripherals'
     | 'cameras'
     | 'eyewear'
-    | 'accessories';
+    | 'accessories'
+    | 'gaming'
+    | 'workspace'
+    | 'fitness'
+    | 'travel';
   categoryLabel: string;
   description: string;
   price: number;
@@ -133,7 +141,7 @@ export interface Order {
   createdAt: string;
 }
 
-export type VoiceGender = 'female' | 'male';
+export type VoiceGender = 'female' | 'male' | 'cloned';
 
 export type VoiceStatus = 'idle' | 'connecting' | 'listening' | 'thinking' | 'speaking' | 'error';
 

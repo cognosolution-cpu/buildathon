@@ -230,3 +230,41 @@ test('ruleParse and validateParsedIntent handle SAVE_ADDRESS, UPDATE_PROFILE, an
   assert.equal(validated.parsed.entities.simpleView, true);
 });
 
+test('resolveMurfVoice supports Piyush cloned voice (Falcon 2.1)', () => {
+  const enCloned = resolveMurfVoice('en-IN', 'cloned');
+  assert.equal(enCloned.voiceId, 'cln_0179511856605450I_0179524244970937N');
+  assert.equal(enCloned.model, 'falcon-2.1');
+  assert.equal(enCloned.channelType, 'MONO');
+  assert.equal(resolveMurfVoice('hi-IN', 'cloned').voiceId, 'cln_0179511856605450I_0179524244970937N');
+});
+
+test('ruleParse handles full and selective 3D product view requests accurately', () => {
+  const full3d = ruleParse('show me the full product in 3d view');
+  assert.equal(full3d.intent, 'ASK_PRODUCT');
+  assert.equal(full3d.entities.simpleView, false);
+  assert.deepEqual(full3d.entities.productRef, { this: true });
+
+  const selectiveOrdinal = ruleParse('show me the second product in 3d view');
+  assert.equal(selectiveOrdinal.intent, 'ASK_PRODUCT');
+  assert.equal(selectiveOrdinal.entities.simpleView, false);
+  assert.deepEqual(selectiveOrdinal.entities.productRef, { index: 2 });
+
+  const selectiveNamed = ruleParse('open PulseBuds Air ANC in 3D view');
+  assert.equal(selectiveNamed.intent, 'ASK_PRODUCT');
+  assert.equal(selectiveNamed.entities.simpleView, false);
+  assert.equal(selectiveNamed.entities.productRef?.name, 'PulseBuds Air ANC');
+});
+
+test('expanded catalog includes gaming, workspace, fitness, and travel categories', () => {
+  assert.equal(CATALOG.length, 30);
+  assert.equal(ruleParse('Show hall effect gamepad controller').entities.category, 'gaming');
+  assert.equal(ruleParse('Find thunderbolt desk dock').entities.category, 'workspace');
+  assert.equal(ruleParse('Show massage gun for recovery').entities.category, 'fitness');
+  assert.equal(ruleParse('Find 140w gan charger for travel').entities.category, 'travel');
+
+  assert.ok(searchCatalog({ category: 'gaming' }).length >= 2);
+  assert.ok(searchCatalog({ category: 'workspace' }).length >= 2);
+  assert.ok(searchCatalog({ category: 'fitness' }).length >= 2);
+  assert.ok(searchCatalog({ category: 'travel' }).length >= 2);
+});
+

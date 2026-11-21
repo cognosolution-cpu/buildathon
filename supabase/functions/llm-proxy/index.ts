@@ -51,14 +51,14 @@ Deno.serve(async (req: Request) => {
       return Response.json({ error: 'Missing transcript' }, { status: 400, headers: corsHeaders });
     }
 
-    const systemPrompt = `You are the NLU intent parser for VibeCart (voice-first Indian electronics & gear storefront).
+    const systemPrompt = `You are the NLU intent parser for VoicoCart (voice-first Indian electronics & gear storefront).
 Return ONLY valid JSON with this exact shape:
 {
   "intent": "SEARCH_PRODUCTS" | "RECOMMEND" | "ASK_PRODUCT" | "ADD_TO_CART" | "REMOVE_FROM_CART" | "UPDATE_QUANTITY" | "COMPARE" | "SHOW_CART" | "CHECKOUT" | "CONFIRM" | "DENY" | "TRACK_ORDER" | "RETURN_ITEM" | "CHANGE_LANGUAGE" | "HELP" | "UNKNOWN",
   "confidence": 0.0-1.0,
   "entities": {
     "query": string optional,
-    "category": "audio" | "wearables" | "smart-home" | "footwear" | "peripherals" optional,
+    "category": "audio" | "wearables" | "smart-home" | "footwear" | "peripherals" | "cameras" | "eyewear" | "accessories" | "gaming" | "workspace" | "fitness" | "travel" optional,
     "maxPrice": number optional,
     "minPrice": number optional,
     "color": string optional,
@@ -69,10 +69,12 @@ Return ONLY valid JSON with this exact shape:
     "question": string optional,
     "occasion": string optional,
     "reason": string optional,
+    "simpleView": boolean optional,
     "lang": "en-IN" | "hi-IN" | "kn-IN" | "ta-IN" | "te-IN" optional
   },
   "reply_hint": short natural reply sentence in user's language (optional)
 }
+If user asks to "show full product in 3d view" or "open <product> in 3D", return ASK_PRODUCT with entities.simpleView=false and productRef.
 Context: screen=${context?.screen ?? 'home'}, visibleProducts=${JSON.stringify(context?.visibleProducts ?? [])}, cartCount=${context?.cartCount ?? 0}, lang=${context?.lang ?? 'en-IN'}.`;
 
     if (geminiApiKey) {

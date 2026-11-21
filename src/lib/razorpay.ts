@@ -92,7 +92,7 @@ export async function launchRazorpayCheckout(
     key: activeOrder.keyId,
     amount: activeOrder.amount,
     currency: 'INR',
-    name: 'VibeCart',
+    name: 'VoicoCart',
     description: 'Voice Commerce Order',
     order_id: activeOrder.razorpayOrderId,
     prefill: {

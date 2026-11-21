@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { CATALOG, searchCatalog } from '../data/catalog';
+import { CATALOG, HOME_FEATURED_IDS, searchCatalog } from '../data/catalog';
 import {
   buildProfileFromAuthUser,
   ensureSupabaseSession,
@@ -36,7 +36,8 @@ import type {
   VoiceStatus,
 } from '../types';
 
-const STORAGE_KEY = 'vibecart_state_v1';
+const STORAGE_KEY = 'voicocart_state_v1';
+const LEGACY_STORAGE_KEY = 'vibecart_state_v1';
 
 interface PersistedState {
   lang: LangCode;
@@ -50,7 +51,7 @@ interface PersistedState {
 
 function loadPersisted(): PersistedState {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(STORAGE_KEY) || localStorage.getItem(LEGACY_STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw) as Partial<PersistedState>;
       const cleanOrders = Array.isArray(parsed.orders)
@@ -61,7 +62,12 @@ function loadPersisted(): PersistedState {
         : [];
       return {
         lang: parsed.lang ?? 'en-IN',
-        voiceGender: parsed.voiceGender === 'male' ? 'male' : 'female',
+        voiceGender:
+          parsed.voiceGender === 'cloned'
+            ? 'cloned'
+            : parsed.voiceGender === 'male'
+              ? 'male'
+              : 'female',
         cart: Array.isArray(parsed.cart) ? parsed.cart : [],
         orders: cleanOrders,
         addresses: cleanAddresses,
@@ -1200,9 +1206,15 @@ export const VibeCartProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     (ref?: ProductRef): Product | null => {
       if (!ref) return null;
       const all = productsRef.current;
-      if (ref.index) return lastResults[ref.index - 1] ?? all[ref.index - 1] ?? null;
+      const visiblePool =
+        route === 'home'
+          ? HOME_FEATURED_IDS.map((id) => all.find((p) => p.id === id)).filter(
+              (p): p is Product => Boolean(p)
+            )
+          : lastResults;
+      if (ref.index) return visiblePool[ref.index - 1] ?? lastResults[ref.index - 1] ?? all[ref.index - 1] ?? null;
       if (ref.id) return all.find((p) => p.id === ref.id) ?? null;
-      if (ref.this) return all.find((p) => p.id === focusedProductId) ?? lastResults[0] ?? null;
+      if (ref.this) return all.find((p) => p.id === focusedProductId) ?? visiblePool[0] ?? lastResults[0] ?? null;
       if (ref.name) {
         const lower = ref.name
           .toLowerCase()
@@ -1237,7 +1249,7 @@ export const VibeCartProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       }
       return null;
     },
-    [focusedProductId, lastResults]
+    [focusedProductId, lastResults, route]
   );
 
   const executeParsedAction = useCallback(
@@ -1309,8 +1321,17 @@ export const VibeCartProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
         case 'ASK_PRODUCT': {
           const target = resolveRef(action.entities.productRef) ?? lastResults[0] ?? all[0];
+          if (action.entities.simpleView === false) {
+            setSimpleView(false);
+            pushChip({ type: 'success', text: `3D View · ${target.title}` });
+          } else if (action.entities.simpleView === true) {
+            setSimpleView(true);
+          }
           navigate('product', target.id);
           const q = (action.entities.question ?? '').toLowerCase();
+          if (action.entities.simpleView === false || /\b3d\b/i.test(q)) {
+            return replyHint ?? `Opening ${target.title} in interactive 3D view.`;
+          }
           if (q.includes('water')) {
             return `${target.title} features ${target.specs['Water Resistance'] ?? 'splash protection'}.`;
           }
@@ -1446,7 +1467,7 @@ export const VibeCartProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
           if (action.entities.saveAddress && mergedDraft.line1 && mergedDraft.city) {
             saveAddress({
-              name: mergedDraft.name || profile?.fullName || 'VibeCart Shopper',
+              name: mergedDraft.name || profile?.fullName || 'VoicoCart Shopper',
               phone: mergedDraft.phone || profile?.phone || '9876543210',
               line1: mergedDraft.line1,
               city: mergedDraft.city,
@@ -1528,7 +1549,7 @@ export const VibeCartProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           }
 
           saveAddress({
-            name: merged.name || 'VibeCart Shopper',
+            name: merged.name || 'VoicoCart Shopper',
             phone: merged.phone || '9876543210',
             line1: merged.line1,
             city: merged.city,
@@ -1580,6 +1601,15 @@ export const VibeCartProvider: React.FC<{ children: React.ReactNode }> = ({ chil
               ? action.entities.simpleView
               : !simpleView;
           setSimpleView(nextSimple);
+          if (action.entities.productRef) {
+            const target = resolveRef(action.entities.productRef);
+            if (target) {
+              navigate('product', target.id);
+              return nextSimple
+                ? `Opening ${target.title} in Simple View (2D photos).`
+                : `Opening ${target.title} in interactive 3D view.`;
+            }
+          }
           return nextSimple
             ? 'Switched to Simple View with 2D studio product photos.'
             : 'Switched back to interactive 3D product view.';

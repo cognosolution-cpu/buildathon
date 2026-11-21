@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { ArrowRight, Mic, Send } from 'lucide-react';
-import { HERO_IMAGE } from '../data/catalog';
+import { HERO_IMAGE, HOME_FEATURED_IDS } from '../data/catalog';
 import { t } from '../nlu/i18n';
 import { useVibeCart } from '../state/store';
 import { ProductCard } from '../components/ProductCard';
@@ -14,6 +14,10 @@ const STARTER_COMMANDS = [
 
 const QUICK_CATEGORIES: Array<{ id: import('../types').Product['category']; label: string }> = [
   { id: 'audio', label: 'Audio' },
+  { id: 'gaming', label: 'Gaming Gear' },
+  { id: 'workspace', label: 'Desk & Setup' },
+  { id: 'fitness', label: 'Fitness & Recovery' },
+  { id: 'travel', label: 'Travel Tech' },
   { id: 'cameras', label: 'Cameras' },
   { id: 'eyewear', label: 'Eyewear' },
   { id: 'wearables', label: 'Wearables' },
@@ -126,7 +130,7 @@ export const HomeScreen: React.FC = () => {
         <div className="lg:col-span-6 min-w-0 relative rounded-[20px] overflow-hidden border border-white/10 bg-[#0B0B0B] min-h-[220px] sm:min-h-[320px] lg:min-h-[420px]">
           <img
             src={HERO_IMAGE}
-            alt="VibeCart studio headphones, obsidian earbuds, and smart acoustic speaker"
+            alt="VoicoCart studio headphones, obsidian earbuds, and smart acoustic speaker"
             referrerPolicy="no-referrer"
             className="w-full h-full object-cover"
           />
@@ -177,15 +181,7 @@ export const HomeScreen: React.FC = () => {
         </div>
 
         <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-6">
-          {[
-            'vc-earbuds-air',
-            'vc-camera-pocket',
-            'vc-glasses-spectra',
-            'vc-smartwatch-ti',
-            'vc-powerbank-volt',
-            'vc-bag-nomad',
-          ]
-            .map((id) => products.find((p) => p.id === id))
+          {HOME_FEATURED_IDS.map((id) => products.find((p) => p.id === id))
             .filter((p): p is NonNullable<typeof p> => Boolean(p))
             .slice(0, 6)
             .map((product, idx) => (

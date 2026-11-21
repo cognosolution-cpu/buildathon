@@ -19,8 +19,8 @@ export default defineConfig(() => {
         },
         manifest: {
           id: '/',
-          name: 'VibeCart — Shop by Talking',
-          short_name: 'VibeCart',
+          name: 'VoicoCart — Shop by Talking',
+          short_name: 'VoicoCart',
           description:
             'Voice-driven dark-mode commerce storefront with 3D product inspection, multilingual speech intents, and live order tracking.',
           start_url: '/',
@@ -65,7 +65,7 @@ export default defineConfig(() => {
               urlPattern: /\.(?:png|jpg|jpeg|svg|webp)$/i,
               handler: 'StaleWhileRevalidate',
               options: {
-                cacheName: 'vibecart-images',
+                cacheName: 'voicocart-images',
                 expiration: {
                   maxEntries: 80,
                   maxAgeSeconds: 60 * 60 * 24 * 30,
@@ -76,7 +76,7 @@ export default defineConfig(() => {
               urlPattern: /^https:\/\/fonts\.(?:googleapis|gstatic)\.com\/.*/i,
               handler: 'CacheFirst',
               options: {
-                cacheName: 'vibecart-fonts',
+                cacheName: 'voicocart-fonts',
                 expiration: {
                   maxEntries: 20,
                   maxAgeSeconds: 60 * 60 * 24 * 365,

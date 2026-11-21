@@ -6,7 +6,21 @@ export interface MurfVoiceSpec {
   locale: string;
   asrLanguage: string;
   gender: VoiceGender;
+  model?: 'FALCON' | 'falcon-2.1';
+  channelType?: 'MONO' | 'STEREO';
 }
+
+export const PIYUSH_CLONED_VOICE_ID = 'cln_0179511856605450I_0179524244970937N';
+
+const makeClonedSpec = (asrLanguage: string, locale = 'en-US'): MurfVoiceSpec => ({
+  voiceId: PIYUSH_CLONED_VOICE_ID,
+  displayName: 'Piyush (Cloned Male · Falcon 2.1)',
+  locale,
+  asrLanguage,
+  gender: 'cloned',
+  model: 'falcon-2.1',
+  channelType: 'MONO',
+});
 
 const MURF_INDIA_VOICE_MAP: Record<LangCode, Record<VoiceGender, MurfVoiceSpec>> = {
   'en-IN': {
@@ -16,6 +30,7 @@ const MURF_INDIA_VOICE_MAP: Record<LangCode, Record<VoiceGender, MurfVoiceSpec>>
       locale: 'en-IN',
       asrLanguage: 'en-IN',
       gender: 'female',
+      model: 'FALCON',
     },
     male: {
       voiceId: 'Abhinav',
@@ -23,7 +38,9 @@ const MURF_INDIA_VOICE_MAP: Record<LangCode, Record<VoiceGender, MurfVoiceSpec>>
       locale: 'en-IN',
       asrLanguage: 'en-IN',
       gender: 'male',
+      model: 'FALCON',
     },
+    cloned: makeClonedSpec('en-IN', 'en-US'),
   },
   'hi-IN': {
     female: {
@@ -32,6 +49,7 @@ const MURF_INDIA_VOICE_MAP: Record<LangCode, Record<VoiceGender, MurfVoiceSpec>>
       locale: 'hi-IN',
       asrLanguage: 'hi-IN',
       gender: 'female',
+      model: 'FALCON',
     },
     male: {
       voiceId: 'Prathamesh',
@@ -39,7 +57,9 @@ const MURF_INDIA_VOICE_MAP: Record<LangCode, Record<VoiceGender, MurfVoiceSpec>>
       locale: 'hi-IN',
       asrLanguage: 'hi-IN',
       gender: 'male',
+      model: 'FALCON',
     },
+    cloned: makeClonedSpec('hi-IN', 'en-US'),
   },
   'ta-IN': {
     female: {
@@ -48,6 +68,7 @@ const MURF_INDIA_VOICE_MAP: Record<LangCode, Record<VoiceGender, MurfVoiceSpec>>
       locale: 'ta-IN',
       asrLanguage: 'ta-IN',
       gender: 'female',
+      model: 'FALCON',
     },
     male: {
       voiceId: 'Karthikeyan',
@@ -55,7 +76,9 @@ const MURF_INDIA_VOICE_MAP: Record<LangCode, Record<VoiceGender, MurfVoiceSpec>>
       locale: 'ta-IN',
       asrLanguage: 'ta-IN',
       gender: 'male',
+      model: 'FALCON',
     },
+    cloned: makeClonedSpec('ta-IN', 'en-US'),
   },
   'te-IN': {
     female: {
@@ -64,6 +87,7 @@ const MURF_INDIA_VOICE_MAP: Record<LangCode, Record<VoiceGender, MurfVoiceSpec>>
       locale: 'te-IN',
       asrLanguage: 'te-IN',
       gender: 'female',
+      model: 'FALCON',
     },
     male: {
       voiceId: 'Samar',
@@ -71,7 +95,9 @@ const MURF_INDIA_VOICE_MAP: Record<LangCode, Record<VoiceGender, MurfVoiceSpec>>
       locale: 'te-IN',
       asrLanguage: 'te-IN',
       gender: 'male',
+      model: 'FALCON',
     },
+    cloned: makeClonedSpec('te-IN', 'en-US'),
   },
   'kn-IN': {
     female: {
@@ -80,6 +106,7 @@ const MURF_INDIA_VOICE_MAP: Record<LangCode, Record<VoiceGender, MurfVoiceSpec>>
       locale: 'kn-IN',
       asrLanguage: 'kn-IN',
       gender: 'female',
+      model: 'FALCON',
     },
     male: {
       voiceId: 'Harman',
@@ -87,7 +114,9 @@ const MURF_INDIA_VOICE_MAP: Record<LangCode, Record<VoiceGender, MurfVoiceSpec>>
       locale: 'kn-IN',
       asrLanguage: 'kn-IN',
       gender: 'male',
+      model: 'FALCON',
     },
+    cloned: makeClonedSpec('kn-IN', 'en-US'),
   },
 };
 

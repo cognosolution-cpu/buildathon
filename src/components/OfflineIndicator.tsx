@@ -27,7 +27,7 @@ export const OfflineIndicator: React.FC = () => {
       className="w-full bg-[#FF6A00] text-[#050505] text-xs font-semibold py-2 px-4 flex items-center justify-center gap-2 z-50"
     >
       <WifiOff className="w-3.5 h-3.5 shrink-0" />
-      <span>You are offline · Browsing cached VibeCart catalog</span>
+      <span>You are offline · Browsing cached VoicoCart catalog</span>
     </div>
   );
 };

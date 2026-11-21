@@ -2,7 +2,7 @@
 
 <!-- Animated 3D Isometric Hero Banner (Color-Matched: #050505 Obsidian + #FF6A00 Sunset Copper) -->
 <a href="https://buildathon-y5uv.vercel.app/">
-  <img src="./docs/vibecart-hero-3d.svg" alt="VibeCart 3D Voice-First Spatial Commerce Banner" width="100%" />
+  <img src="./docs/vibecart-hero-3d.svg" alt="VoicoCart 3D Voice-First Spatial Commerce Banner" width="100%" />
 </a>
 
 <br /><br />
@@ -43,9 +43,9 @@
 
 ---
 
-## ✨ What Is VibeCart?
+## ✨ What Is VoicoCart?
 
-**VibeCart — Shop by Talking** is a production-grade, **voice-driven dark-mode commerce platform** built with an obsidian (`#050505`) and Sunset Copper (`#FF6A00`) spatial design language. Unlike standard chatbots that only reply with text, **VibeCart turns natural speech into real UI & database actions**:
+**VoicoCart — Shop by Talking** is a production-grade, **voice-driven dark-mode commerce platform** built with an obsidian (`#050505`) and Sunset Copper (`#FF6A00`) spatial design language. Unlike standard chatbots that only reply with text, **VoicoCart turns natural speech into real UI & database actions**:
 
 - 🎙️ **Hands-Free End-to-End Shopping**: Search products by budget/occasion, compare items side-by-side, add variants to cart, **fill & permanently save delivery addresses**, update profile info, switch 3D/2D modes, launch Razorpay checkout, and track or return orders — all by voice or text.
 - 🧊 **Interactive Three.js 3D + Instant 2D Simple View**: Rotate 3D product models in real time with dynamic colorway lighting (`Obsidian Copper`, `Sunset Amber`, `Titanium Slate`), or toggle **Simple View (2D Studio Photos)** for instant lightweight browsing.
@@ -117,7 +117,7 @@ flowchart TB
 
 ## 🛠️ Complete Tech Stack
 
-| Layer | Technologies Used | Purpose in VibeCart |
+| Layer | Technologies Used | Purpose in VoicoCart |
 | :--- | :--- | :--- |
 | **Frontend UI** | `React 19`, `TypeScript`, `Vite 8`, `Tailwind CSS v4`, `Lucide Icons`, `Motion` | Dark matte obsidian UI (`#050505`), glassmorphic surfaces, mobile app bottom navigation |
 | **3D & Media** | `Three.js`, `@types/three`, Custom 2D Studio Photography | Interactive 3D product previews with colorway switching + 2D Simple View fallback |
@@ -133,10 +133,10 @@ flowchart TB
 
 ## 🧠 How the AI Thinks (3-Layer Brain)
 
-> Instead of letting an LLM hallucinate text replies that do nothing on screen, **VibeCart** runs every command through a **3-Layer Hybrid Decision Pipeline**:
+> Instead of letting an LLM hallucinate text replies that do nothing on screen, **VoicoCart** runs every command through a **3-Layer Hybrid Decision Pipeline**:
 
 <div align="center">
-  <img src="./docs/vibecart-pipeline-3d.svg" alt="VibeCart 3D Hybrid AI & Voice Pipeline" width="100%" />
+  <img src="./docs/vibecart-pipeline-3d.svg" alt="VoicoCart 3D Hybrid AI & Voice Pipeline" width="100%" />
 </div>
 
 ### Step-by-Step Execution Flow:
@@ -166,14 +166,14 @@ flowchart TB
 
 ## 🎙️ Murf AI & Agora Live Voice Pipeline
 
-VibeCart supports **two synchronized voice architectures** (`src/voice/`):
+VoicoCart supports **two synchronized voice architectures** (`src/voice/`):
 
 ```mermaid
 %%{init: {'theme': 'base', 'themeVariables': { 'background': '#050505', 'primaryColor': '#181717', 'primaryBorderColor': '#FF6A00', 'primaryTextColor': '#F5F5F5', 'lineColor': '#FFA040', 'edgeLabelBackground': '#111111' }}}%%
 sequenceDiagram
     autonumber
     participant U as 👤 Shopper
-    participant App as 📱 VibeCart UI
+    participant App as 📱 VoicoCart UI
     participant API as ⚙️ Backend (/api/*)
     participant Ag as 📡 Agora AI Engine
     participant Murf as 🔊 Murf Falcon 2
@@ -207,12 +207,12 @@ sequenceDiagram
 
 ## 📦 Catalog Separation & Smart Search
 
-VibeCart maintains **22 distinct electronics, wearables & lifestyle products** neatly separated across **8 categories** (`src/data/catalog.ts` & Supabase `categories` + `products`):
+VoicoCart maintains **22 distinct electronics, wearables & lifestyle products** neatly separated across **8 categories** (`src/data/catalog.ts` & Supabase `categories` + `products`):
 
 ```mermaid
 %%{init: {'theme': 'base', 'themeVariables': { 'background': '#050505', 'primaryColor': '#181717', 'primaryTextColor': '#F5F5F5', 'pie1': '#FF6A00', 'pie2': '#FFA040', 'pie3': '#2EE59D', 'pie4': '#4DA3FF', 'pie5': '#FFC83D', 'pie6': '#E34A00', 'pie7': '#FF4D5E', 'pie8': '#9A9A9A', 'pieStrokeColor': '#050505', 'pieSectionTextColor': '#050505', 'pieLegendTextColor': '#F5F5F5', 'pieTitleTextColor': '#F5F5F5' }}}%%
 pie showData
-    title VibeCart Store Catalog — 22 Products Across 8 Categories
+    title VoicoCart Store Catalog — 22 Products Across 8 Categories
     "Audio (Earbuds & Studio Headphones)" : 4
     "Wearables (AMOLED Watch & Fitness Band)" : 3
     "Footwear (Carbon Running & Trail Shoes)" : 3
@@ -246,7 +246,7 @@ flowchart TD
     Unknown --> SafeUI["✅ Safe Handling (Zero Crash / Zero Bad Navigation):\n• Displays red hint chip: Try 'Add PulseBuds Air ANC and checkout'\n• Murf AI speaks localized fallback in user's language"]
 
     Mode -- "Live Agora Conversational Call" --> AgoraLLM["Agora Agent (Gemini Chat + Strict Store Prompt)"]
-    AgoraLLM --> GuardReply["✅ Replies concisely (< 24 words) & guides shopper back to VibeCart\n• On unclear audio: 'Sorry, I missed that. Could you repeat your shopping request?'"]
+    AgoraLLM --> GuardReply["✅ Replies concisely (< 24 words) & guides shopper back to VoicoCart\n• On unclear audio: 'Sorry, I missed that. Could you repeat your shopping request?'"]
 ```
 
 ### Built-In Resilience Matrix
@@ -360,6 +360,6 @@ Run `supabase/migrations/001_init.sql` followed by `supabase/migrations/002_prof
 
 <br /><br />
 
-<img src="https://capsule-render.vercel.app/api?type=waving&color=0:E34A00,50:FF6A00,100:FFA040&height=110&section=footer&text=VibeCart%20%C2%B7%20Shop%20by%20Talking&fontColor=050505&fontSize=20&fontAlignY=72" alt="VibeCart Footer Wave" width="100%" />
+<img src="https://capsule-render.vercel.app/api?type=waving&color=0:E34A00,50:FF6A00,100:FFA040&height=110&section=footer&text=VoicoCart%20%C2%B7%20Shop%20by%20Talking&fontColor=050505&fontSize=20&fontAlignY=72" alt="VoicoCart Footer Wave" width="100%" />
 
 </div>

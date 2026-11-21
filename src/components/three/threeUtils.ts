@@ -308,6 +308,79 @@ export function buildProceduralProduct(preset: ProductPreset, accentHex: string)
     group.traverse((c) => {
       if ((c as THREE.Mesh).isMesh) c.castShadow = true;
     });
+  } else if (preset === 'controller') {
+    const bridge = new THREE.Mesh(new THREE.BoxGeometry(1.25, 0.34, 0.72), darkMatte);
+    bridge.position.set(0, 0.42, 0);
+    const gripL = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.14, 0.72, 20), darkMatte);
+    gripL.position.set(-0.62, 0.25, 0.18);
+    gripL.rotation.set(0.55, 0, -0.32);
+    const gripR = gripL.clone();
+    gripR.position.set(0.62, 0.25, 0.18);
+    gripR.rotation.set(0.55, 0, 0.32);
+    const stickRingL = new THREE.Mesh(new THREE.TorusGeometry(0.11, 0.02, 12, 24), warmAccent);
+    stickRingL.rotation.x = Math.PI / 2;
+    stickRingL.position.set(-0.3, 0.6, 0.04);
+    const stickRingR = stickRingL.clone();
+    stickRingR.position.set(0.24, 0.6, 0.14);
+    const stickCapL = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.08, 18), brushedMetal);
+    stickCapL.position.set(-0.3, 0.64, 0.04);
+    const stickCapR = stickCapL.clone();
+    stickCapR.position.set(0.24, 0.64, 0.14);
+    const dpad = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.05, 0.22), brushedMetal);
+    dpad.position.set(-0.26, 0.6, 0.18);
+    group.add(bridge, gripL, gripR, stickRingL, stickRingR, stickCapL, stickCapR, dpad);
+    group.traverse((c) => {
+      if ((c as THREE.Mesh).isMesh) c.castShadow = true;
+    });
+  } else if (preset === 'dock') {
+    const slab = new THREE.Mesh(new THREE.BoxGeometry(1.65, 0.22, 0.85), darkMatte);
+    slab.position.set(0, 0.14, 0);
+    const bevelTrim = new THREE.Mesh(new THREE.BoxGeometry(1.68, 0.05, 0.88), brushedMetal);
+    bevelTrim.position.set(0, 0.05, 0);
+    const dialBase = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.26, 0.12, 32), warmAccent);
+    dialBase.position.set(0.45, 0.31, 0.08);
+    const dialRing = new THREE.Mesh(new THREE.TorusGeometry(0.24, 0.018, 12, 32), brushedMetal);
+    dialRing.rotation.x = Math.PI / 2;
+    dialRing.position.set(0.45, 0.26, 0.08);
+    const port1 = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.06, 0.05), warmAccent);
+    port1.position.set(-0.45, 0.14, 0.43);
+    const port2 = port1.clone();
+    port2.position.set(-0.15, 0.14, 0.43);
+    group.add(bevelTrim, slab, dialBase, dialRing, port1, port2);
+    group.traverse((c) => {
+      if ((c as THREE.Mesh).isMesh) c.castShadow = true;
+    });
+  } else if (preset === 'recovery') {
+    const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.14, 0.85, 24), darkMatte);
+    handle.position.set(0, 0.44, 0);
+    const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.88, 28), darkMatte);
+    barrel.rotation.z = Math.PI / 2;
+    barrel.position.set(0, 0.96, 0);
+    const collar = new THREE.Mesh(new THREE.CylinderGeometry(0.21, 0.21, 0.16, 28), warmAccent);
+    collar.rotation.z = Math.PI / 2;
+    collar.position.set(0.46, 0.96, 0);
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.22, 24, 18), brushedMetal);
+    head.position.set(0.72, 0.96, 0);
+    group.add(handle, barrel, collar, head);
+    group.traverse((c) => {
+      if ((c as THREE.Mesh).isMesh) c.castShadow = true;
+    });
+  } else if (preset === 'charger') {
+    const block = new THREE.Mesh(new THREE.BoxGeometry(0.78, 1.08, 0.62), darkMatte);
+    block.position.set(0, 0.56, 0);
+    const face = new THREE.Mesh(new THREE.BoxGeometry(0.72, 1.0, 0.04), brushedMetal);
+    face.position.set(0, 0.56, 0.31);
+    const display = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.22, 0.03), warmAccent);
+    display.position.set(0, 0.86, 0.33);
+    for (let i = 0; i < 3; i++) {
+      const portBezel = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.11, 0.04), warmAccent);
+      portBezel.position.set(0, 0.56 - i * 0.2, 0.33);
+      group.add(portBezel);
+    }
+    group.add(block, face, display);
+    group.traverse((c) => {
+      if ((c as THREE.Mesh).isMesh) c.castShadow = true;
+    });
   } else {
     // Mechanical keyboard
     const chassis = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.14, 0.86), brushedMetal);

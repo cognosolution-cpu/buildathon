@@ -26,7 +26,7 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({ variant = 'h
         <button
           type="button"
           onClick={handleInstallClick}
-          aria-label="Install VibeCart app"
+          aria-label="Install VoicoCart app"
           className="inline-flex items-center gap-1.5 h-10 px-3 rounded-[14px] bg-[#FF6A00]/15 border border-[#FF6A00]/45 text-xs font-semibold text-[#FFA040] hover:bg-[#FF6A00] hover:text-[#050505] transition-colors whitespace-nowrap shrink-0 cursor-pointer"
         >
           <Download className="w-3.5 h-3.5 shrink-0" />
@@ -49,7 +49,7 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({ variant = 'h
           <div>
             <div className="flex items-center gap-2">
               <h2 className="font-display text-base font-semibold text-[#F5F5F5]">
-                Install VibeCart Mobile App
+                Install VoicoCart Mobile App
               </h2>
               {isInstalled && (
                 <span className="px-2 py-0.5 rounded-md bg-[#2EE59D]/15 text-[11px] font-semibold text-[#2EE59D] inline-flex items-center gap-1">
@@ -61,7 +61,7 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({ variant = 'h
             <p className="text-xs text-[#9A9A9A] mt-0.5 leading-relaxed">
               {isInstalled
                 ? 'Running in standalone mobile app mode with offline catalog support.'
-                : 'Add VibeCart to your phone home screen for full-screen app navigation, faster launches, and offline browsing.'}
+                : 'Add VoicoCart to your phone home screen for full-screen app navigation, faster launches, and offline browsing.'}
             </p>
           </div>
         </div>
@@ -91,13 +91,13 @@ const InstallGuideModal: React.FC<{ isIOS: boolean; isAndroid: boolean; onClose:
   <div
     role="dialog"
     aria-modal="true"
-    aria-label="Install VibeCart App Guide"
+    aria-label="Install VoicoCart App Guide"
     className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-4"
   >
     <div className="w-full max-w-sm rounded-[24px] bg-[#111111] border border-white/15 p-5 space-y-4 shadow-2xl">
       <div className="flex items-center justify-between">
         <h3 className="font-display text-base font-semibold text-[#F5F5F5]">
-          Install VibeCart on Your Phone
+          Install VoicoCart on Your Phone
         </h3>
         <button
           type="button"
@@ -126,7 +126,7 @@ const InstallGuideModal: React.FC<{ isIOS: boolean; isAndroid: boolean; onClose:
           <li className="flex items-start gap-2">
             <span className="font-mono-num text-[#FFA040] font-semibold">3.</span>
             <span>
-              Tap <strong className="text-[#F5F5F5]">Add</strong> to launch VibeCart as a standalone app.
+              Tap <strong className="text-[#F5F5F5]">Add</strong> to launch VoicoCart as a standalone app.
             </span>
           </li>
         </ol>
@@ -143,7 +143,7 @@ const InstallGuideModal: React.FC<{ isIOS: boolean; isAndroid: boolean; onClose:
         </ol>
       ) : (
         <p className="text-xs text-[#9A9A9A] leading-relaxed">
-          In Chrome or Edge, click the <strong className="text-[#F5F5F5]">Install VibeCart</strong> icon in the browser address bar to install as a standalone app. On iPhone/Android, open in Safari or Chrome and choose <strong className="text-[#F5F5F5]">Add to Home Screen</strong>.
+          In Chrome or Edge, click the <strong className="text-[#F5F5F5]">Install VoicoCart</strong> icon in the browser address bar to install as a standalone app. On iPhone/Android, open in Safari or Chrome and choose <strong className="text-[#F5F5F5]">Add to Home Screen</strong>.
         </p>
       )}
 

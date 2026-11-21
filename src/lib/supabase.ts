@@ -41,6 +41,10 @@ const VALID_PRESETS: ProductPreset[] = [
   'lamp',
   'backpack',
   'mouse',
+  'controller',
+  'dock',
+  'recovery',
+  'charger',
 ];
 
 const VALID_CATEGORIES: Product['category'][] = [
@@ -52,6 +56,10 @@ const VALID_CATEGORIES: Product['category'][] = [
   'cameras',
   'eyewear',
   'accessories',
+  'gaming',
+  'workspace',
+  'fitness',
+  'travel',
 ];
 
 // Map Postgres product row into frontend Product shape
@@ -65,7 +73,7 @@ export function mapProductRow(row: Record<string, unknown>): Product {
     id: String(row.slug ?? row.id),
     dbUuid: typeof row.id === 'string' ? row.id : undefined,
     title: String(row.title ?? 'Product'),
-    brand: String(row.brand ?? 'VibeCart'),
+    brand: String(row.brand ?? 'VoicoCart'),
     category,
     categoryLabel: String(row.category_name ?? category),
     description: String(row.description ?? ''),

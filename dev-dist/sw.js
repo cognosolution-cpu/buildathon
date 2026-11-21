@@ -78,7 +78,7 @@ define(['./workbox-fdf26176'], (function (workbox) { 'use strict';
    */
   workbox.precacheAndRoute([{
     "url": "index.html",
-    "revision": "0.vapbmvgjqh"
+    "revision": "0.3k8qmve6qmo"
   }], {});
   workbox.cleanupOutdatedCaches();
   workbox.registerRoute(new workbox.NavigationRoute(workbox.createHandlerBoundToURL("index.html"), {
@@ -87,14 +87,14 @@ define(['./workbox-fdf26176'], (function (workbox) { 'use strict';
   }));
   workbox.registerRoute(/^\/api\//, new workbox.NetworkOnly(), 'GET');
   workbox.registerRoute(/\.(?:png|jpg|jpeg|svg|webp)$/i, new workbox.StaleWhileRevalidate({
-    "cacheName": "vibecart-images",
+    "cacheName": "voicocart-images",
     plugins: [new workbox.ExpirationPlugin({
       maxEntries: 80,
       maxAgeSeconds: 2592000
     })]
   }), 'GET');
   workbox.registerRoute(/^https:\/\/fonts\.(?:googleapis|gstatic)\.com\/.*/i, new workbox.CacheFirst({
-    "cacheName": "vibecart-fonts",
+    "cacheName": "voicocart-fonts",
     plugins: [new workbox.ExpirationPlugin({
       maxEntries: 20,
       maxAgeSeconds: 31536000

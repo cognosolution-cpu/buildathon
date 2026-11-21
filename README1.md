@@ -1,12 +1,12 @@
-# VibeCart — Shop by Talking (Complete Project Guide in Hinglish) 🎙️🛒
+# VoicoCart — Shop by Talking (Complete Project Guide in Hinglish) 🎙️🛒
 
-> **Non-Coders ke liye Simple Guide**: Agar aapko coding bilkul nahi aati, tab bhi is ek file ko padh kar aap 100% samajh jaoge ki **VibeCart** andar se kaise chalta hai — Frontend, Backend, Database, AI Brain (Gemini + Rules), Murf Voice, Agora Live Call, Catalog Separation, aur agar koi out-of-limit sawaal pooche (jaise *"Where is India?"*) toh system kaise handle karta hai!
+> **Non-Coders ke liye Simple Guide**: Agar aapko coding bilkul nahi aati, tab bhi is ek file ko padh kar aap 100% samajh jaoge ki **VoicoCart** andar se kaise chalta hai — Frontend, Backend, Database, AI Brain (Gemini + Rules), Murf Voice, Agora Live Call, Catalog Separation, aur agar koi out-of-limit sawaal pooche (jaise *"Where is India?"*) toh system kaise handle karta hai!
 
 ---
 
 ## 1. Project Kya Hai? (Ek Line Mein)
 
-**VibeCart** ek **Voice-First Indian E-Commerce Web App & Mobile PWA** hai jahan user bolkar ya type karke:
+**VoicoCart** ek **Voice-First Indian E-Commerce Web App & Mobile PWA** hai jahan user bolkar ya type karke:
 - Products dhoond sakta hai (`"2000 ke andar wireless earbuds dikhao"`)
 - **3D** mein product ghuma ke dekh sakta hai (ya **Simple View 2D Photos** switch kar sakta hai)
 - Products compare kar sakta hai (`"Compare 1 and 2"`)
@@ -132,7 +132,7 @@ Supabase hamara **Cloud Database + Login System + Live Tracker** hai (`supabase/
 
 ## 4. Hamara AI Kaise Sochta Aur Kaam Karta Hai? (LLM + Rules + Validation)
 
-Bahut log sochte hain ki AI har baar seedha ChatGPT/Gemini ki tarah paragraph likhta hai — **VibeCart aise kaam nahi karta!** Kyunki e-commerce app mein AI ko sirf baatein nahi karni, balki **buttons dabane, cart update karne, address save karne aur checkout kholne** jaise real actions karne hote hain.
+Bahut log sochte hain ki AI har baar seedha ChatGPT/Gemini ki tarah paragraph likhta hai — **VoicoCart aise kaam nahi karta!** Kyunki e-commerce app mein AI ko sirf baatein nahi karni, balki **buttons dabane, cart update karne, address save karne aur checkout kholne** jaise real actions karne hote hain.
 
 Iske liye humne **3-Layer Hybrid AI Brain** banaya hai (`src/nlu/`):
 
@@ -181,7 +181,7 @@ AI sirf inhi approved kaamon mein se action chunta hai:
 
 ## 5. Murf AI & Agora Voice Kaise Kaam Karte Hain?
 
-VibeCart mein **Voice ke 2 smart modes** hain taaki app hamesha bole aur sune (`src/voice/`):
+VoicoCart mein **Voice ke 2 smart modes** hain taaki app hamesha bole aur sune (`src/voice/`):
 
 ```mermaid
 flowchart LR
@@ -221,7 +221,7 @@ Humare store mein **22 distinct products** ko **8 clear categories** mein divide
 
 ```mermaid
 pie showData
-    title VibeCart Catalog Distribution (22 Products across 8 Categories)
+    title VoicoCart Catalog Distribution (22 Products across 8 Categories)
     "Audio (Earbuds & Headphones)" : 4
     "Wearables (Smartwatches & Bands)" : 3
     "Footwear (Running & Trail Shoes)" : 3
@@ -262,7 +262,7 @@ flowchart TD
     U1 --> UI1["3. Safe UI + Voice Response:\n- Koi galat page nahi khulta\n- Red ActionChip: Try 'Add PulseBuds Air ANC and checkout'\n- Murf AI bolta hai: 'I did not catch that. Try saying: Show wireless earbuds under 2000.'\n  (Hindi mein: 'समझ नहीं आया। कृपया बोलें: 2000 से कम के ईयरबड्स दिखाओ।')"]
 
     ModeCheck -- "Live Agora Call Mode" --> A1["1. Agora Agent (Gemini 3.1 Flash Lite Chat)"]
-    A1 --> A2["System Prompt: 'Only VibeCart shopping assistant, max 24 words'"]
+    A1 --> A2["System Prompt: 'Only VoicoCart shopping assistant, max 24 words'"]
     A2 --> A3["Agent politely short jawab dekar user ko wapas shopping help pe laata hai\nYa noise/error hone par failure_message bolta hai:\n'Sorry, I missed that. Could you repeat your shopping request?'"]
 ```
 
@@ -299,4 +299,4 @@ flowchart TD
 - **Indian Multilingual TTS**: **Murf AI Falcon 2**
 - **Payments**: **Razorpay Orders & Verification API**
 
-> *Yeh documentation VibeCart ke actual codebase (`src/`, `server/`, `api/`, `supabase/`) ko inspect karke banayi gayi hai taaki har flow, model name, voice ID aur fallback 100% accurate rahe.*
+> *Yeh documentation VoicoCart ke actual codebase (`src/`, `server/`, `api/`, `supabase/`) ko inspect karke banayi gayi hai taaki har flow, model name, voice ID aur fallback 100% accurate rahe.*

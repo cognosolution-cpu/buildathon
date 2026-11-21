@@ -37,6 +37,10 @@ const ORDINAL_MAP: Record<string, number> = Object.fromEntries([
 const COLOR_WORDS = ['black', 'obsidian', 'amber', 'orange', 'gold', 'silver', 'titanium', 'slate', 'bronze', 'charcoal'];
 
 function inferCategory(text: string): Product['category'] | undefined {
+  if (/(gamepad|controller|joystick|esports|gaming\s*headset|गेमिंग)/i.test(text)) return 'gaming';
+  if (/(thunderbolt|desk\s*dock|usb-c\s*hub|dock|workspace|desk\s*console)/i.test(text)) return 'workspace';
+  if (/(massage\s*gun|recovery|hrv|strap|फिटनेस|मसाज)/i.test(text)) return 'fitness';
+  if (/(gan\s*charger|travel\s*brick|travel\s*tech|tech\s*organizer|adapter|यात्रा)/i.test(text)) return 'travel';
   if (/(earbud|headphone|headset|audio|earphone|tws|ईयरबड्स|हेडफोन)/i.test(text)) return 'audio';
   if (/(watch|smartwatch|tracker|fitness|घड़ी)/i.test(text)) return 'wearables';
   if (/(speaker|smart home|alexa|lamp|light\s*bar|desk\s*light|स्पीकर)/i.test(text)) return 'smart-home';
@@ -53,10 +57,10 @@ function extractRef(text: string): ProductRef | undefined {
     const regex = new RegExp(`(?:^|\\s)(?:the\\s+)?${word}(?:\\s+one)?(?:\\s|$|[?.!,])`, 'i');
     if (regex.test(text)) return { index: idx };
   }
-  const numMatch = text.match(/\b(?:number|item|#)\s*(\d+)\b/i) ?? text.match(/\b(\d+)\b/);
+  const numMatch = text.match(/\b(?:number|item|#)\s*(\d+)\b/i) ?? text.match(/\b(\d+)\b(?!\s*(?:d|k|gb|mah|hz|mm|w)\b)/i);
   if (numMatch) {
     const n = Number(numMatch[1]);
-    if (n >= 1 && n <= 10) return { index: n };
+    if (n >= 1 && n <= 12) return { index: n };
   }
   for (const [word, idx] of CARDINAL_REFS) {
     const regex = new RegExp(`(?:^|\\s)${word}(?:\\s|$|[?.!,])`, 'i');
@@ -97,7 +101,12 @@ function extractCheckoutEntities(raw: string): ParsedIntent['entities'] | null {
     (/\bsave\b/i.test(raw) && /\baddress\b/i.test(raw));
 
   const fields: Partial<import('../types').CheckoutDraft> = {};
-  const nameMatch = raw.match(/\b(?:my\s+name\s+is|name\s*(?:is|:)?|for)\s+([a-zA-Z][a-zA-Z\s]{1,40}?)(?=\s*(?:,|phone|mobile|number|address|street|city|state|pin|pincode|zip|and\b|$))/i);
+  const hasDeliveryContext = /\b(checkout|address|phone|mobile|pincode|pin|city|state|deliver|ship|recipient|order\s+for)\b/i.test(raw);
+  const nameMatch =
+    raw.match(/\b(?:my\s+name\s+is|name\s*(?:is|:)?)\s+([a-zA-Z][a-zA-Z\s]{1,40}?)(?=\s*(?:,|phone|mobile|number|address|street|city|state|pin|pincode|zip|and\b|$))/i) ??
+    (hasDeliveryContext
+      ? raw.match(/\bfor\s+([a-zA-Z][a-zA-Z\s]{1,40}?)(?=\s*(?:,|phone|mobile|number|address|street|city|state|pin|pincode|zip|and\b|$))/i)
+      : null);
   if (nameMatch?.[1]) fields.name = nameMatch[1].trim();
 
   const phoneMatch = raw.match(/(?:\+91[\s-]?)?\b([6-9]\d{9})\b/);
@@ -184,7 +193,7 @@ export function ruleParse(transcript: string): ParsedIntent {
     return { intent: 'SIGN_IN_GOOGLE', entities: {}, confidence: 0.95 };
   }
 
-  // 4b. Simple View / 2D Studio Photos vs 3D View toggle
+  // 4b. Simple View (2D) vs Full/Selective Product 3D View
   if (/\b(simple\s+view|2d\s+(?:studio\s+)?photos?|studio\s+photos?\s+mode)\b/i.test(normalized)) {
     const turnOff = /\b(off|disable|exit|stop|3d)\b/i.test(normalized);
     return {
@@ -193,7 +202,41 @@ export function ruleParse(transcript: string): ParsedIntent {
       confidence: 0.94,
     };
   }
-  if (/\b(switch\s+to\s+3d|enable\s+3d|3d\s+view\s+mode|turn\s+on\s+3d)\b/i.test(normalized)) {
+  if (
+    /\b(3d\s+(?:view|mode|model)|in\s+3d|full\s+3d|switch\s+to\s+3d|enable\s+3d|turn\s+on\s+3d|full\s+product)\b/i.test(
+      normalized
+    )
+  ) {
+    const refFromPhrase = extractRef(normalized);
+    const cleanedName = normalized
+      .replace(
+        /\b(show(?:\s+me)?|open|view|display|inspect|see|give(?:\s+me)?|switch\s+to|turn\s+on|enable|full|complete|entire|detailed?|selected?|selective|once|only|product|item|mode|model|view|in\s+3d|3d|the|a|an|one|please|now|for|of)\b/gi,
+        ' '
+      )
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    const asksForProductView =
+      Boolean(refFromPhrase) ||
+      cleanedName.length >= 2 ||
+      /\b(full\s+product|product\s+in\s+3d|show(?:\s+me)?\s+.*\b3d\b|open\s+.*\b3d\b|view\s+.*\b3d\b|selected|selective)\b/i.test(
+        normalized
+      );
+
+    if (asksForProductView) {
+      const productRef: ProductRef =
+        refFromPhrase ?? (cleanedName.length >= 2 ? { name: cleanedName } : { this: true });
+      return {
+        intent: 'ASK_PRODUCT',
+        entities: {
+          productRef,
+          simpleView: false,
+          question: raw,
+        },
+        confidence: 0.94,
+      };
+    }
+
     return {
       intent: 'TOGGLE_SIMPLE_VIEW',
       entities: { simpleView: false },
